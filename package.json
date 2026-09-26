@@ -13,7 +13,8 @@
     "@supabase/supabase-js": "^2.117.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.4"
+    "react-router-dom": "^7.18.4",
+    "vite-plugin-pwa": "^1.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
