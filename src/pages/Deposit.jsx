@@ -100,17 +100,26 @@ function Deposit() {
               return;
             }
 
-            alert(
-              `Payment successful! 🎉\n\nAmount: ₦${Number(
-                verificationData.amount
-              ).toLocaleString("en-NG", {
-                minimumFractionDigits: 2,
-              })}\n\nYour CHSDOSA account has been credited.`
+            // Use the actual amount credited by the verification function.
+            const creditedAmount = Number(
+              verificationData.credited_amount ?? 0
+            );
+
+            console.log(
+              "PAYMENT VERIFIED - CREDITED AMOUNT:",
+              creditedAmount
             );
 
             setAmount("");
 
-            navigate("/dashboard");
+            // Return to dashboard silently.
+            // No browser "SirRehoboth says Payment successful" popup.
+            navigate("/dashboard", {
+              state: {
+                paymentSuccess: true,
+                creditedAmount,
+              },
+            });
           } catch (error) {
             console.error("VERIFICATION ERROR:", error);
 
@@ -124,17 +133,18 @@ function Deposit() {
 
         onCancel: () => {
           alert("Payment was cancelled.");
+          setLoading(false);
         },
 
         onError: (error) => {
           console.error("PAYSTACK ERROR:", error);
           alert("Payment could not be completed.");
+          setLoading(false);
         },
       });
     } catch (error) {
       console.error("DEPOSIT ERROR:", error);
       alert("Something went wrong while starting payment.");
-    } finally {
       setLoading(false);
     }
   };
