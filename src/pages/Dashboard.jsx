@@ -10,15 +10,104 @@ function Dashboard() {
   const [member, setMember] = useState(null);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
+
+  // Remember dark mode after refresh/reopening
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem("chsdosa-dark-mode") === "true";
+  });
+
   const [slide, setSlide] = useState(0);
   const [notifications, setNotifications] = useState(0);
+  const [showBalance, setShowBalance] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
+  /*
+   * SAVE DARK MODE
+   */
   useEffect(() => {
-    loadMemberData();
-  }, []);
+    localStorage.setItem("chsdosa-dark-mode", String(darkMode));
+  }, [darkMode]);
 
-  // Moving CHSDOSA slideshow
+  /*
+   * LOAD MEMBER DATA
+   *
+   * We first use getSession() instead of immediately using getUser().
+   * This gives Supabase time to restore the saved login session
+   * when the app is refreshed or reopened.
+   */
+  useEffect(() => {
+    let mounted = true;
+
+    const startDashboard = async () => {
+      try {
+        setLoading(true);
+
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error("SESSION ERROR:", error);
+        }
+
+        if (!session?.user) {
+          if (mounted) {
+            setLoading(false);
+            navigate("/login", { replace: true });
+          }
+          return;
+        }
+
+        await loadMemberData(session.user);
+
+        if (mounted) {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error("DASHBOARD ERROR:", error);
+
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    startDashboard();
+
+    /*
+     * Listen for Supabase authentication changes.
+     */
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
+      console.log("AUTH EVENT:", event);
+
+      if (session?.user) {
+        await loadMemberData(session.user);
+
+        if (mounted) {
+          setLoading(false);
+        }
+      } else if (event === "SIGNED_OUT") {
+        setMember(null);
+        setBalance(0);
+        setLoading(false);
+        navigate("/login", { replace: true });
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
+
+  /*
+   * MOVING CHSDOSA SLIDESHOW
+   */
   useEffect(() => {
     const timer = setInterval(() => {
       setSlide((current) => (current + 1) % 4);
@@ -27,52 +116,198 @@ function Dashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  const loadMemberData = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  /*
+   * LOAD MEMBER + ACCOUNT
+   */
+  const loadMemberData = async (currentUser = null) => {
+    try {
+      let user = currentUser;
 
-    if (!user) {
-      navigate("/login");
+      if (!user) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        user = session?.user;
+      }
+
+      if (!user) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      /*
+       * MEMBER DATA
+       */
+      const { data: memberData, error: memberError } = await supabase
+        .from("members")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      console.log("MEMBER DATA:", memberData);
+      console.log("MEMBER ERROR:", memberError);
+
+      if (memberError) {
+        console.error(memberError);
+      }
+
+      setMember(memberData);
+
+      /*
+       * ACCOUNT BALANCE
+       */
+      const { data: accountData, error: accountError } = await supabase
+        .from("accounts")
+        .select("balance")
+        .eq("member_id", user.id)
+        .maybeSingle();
+
+      console.log("ACCOUNT DATA:", accountData);
+      console.log("ACCOUNT ERROR:", accountError);
+
+      if (accountError) {
+        console.error(accountError);
+      }
+
+      if (accountData) {
+        setBalance(Number(accountData.balance || 0));
+      } else {
+        setBalance(0);
+      }
+    } catch (error) {
+      console.error("LOAD MEMBER DATA ERROR:", error);
+    }
+  };
+
+  /*
+   * UPLOAD MEMBER PROFILE PICTURE
+   */
+  const handleProfileUpload = async (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file.");
+      event.target.value = "";
       return;
     }
 
-    const { data: memberData, error: memberError } = await supabase
-      .from("members")
-      .select("*")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    console.log("MEMBER DATA:", memberData);
-    console.log("MEMBER ERROR:", memberError);
-
-    if (memberError) {
-      console.error(memberError);
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Please choose an image smaller than 5MB.");
+      event.target.value = "";
+      return;
     }
 
-    setMember(memberData);
+    try {
+      setUploadingPhoto(true);
 
-    const { data: accountData, error: accountError } = await supabase
-      .from("accounts")
-      .select("balance")
-      .eq("member_id", user.id)
-      .maybeSingle();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    console.log("ACCOUNT DATA:", accountData);
-    console.log("ACCOUNT ERROR:", accountError);
+      const user = session?.user;
 
-    if (accountData) {
-      setBalance(accountData.balance || 0);
+      if (!user) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      const fileExt = file.name.split(".").pop()?.toLowerCase() || "jpg";
+
+      const fileName = `${user.id}.${fileExt}`;
+      const filePath = `members/${fileName}`;
+
+      /*
+       * Upload image
+       */
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, {
+          upsert: true,
+          contentType: file.type,
+        });
+
+      if (uploadError) {
+        console.error("UPLOAD ERROR:", uploadError);
+        alert("Unable to upload picture. Please try again.");
+        return;
+      }
+
+      /*
+       * Get public image URL
+       */
+      const { data: publicUrlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const avatarUrl = publicUrlData.publicUrl;
+
+      /*
+       * Update member profile
+       */
+      const { error: updateError } = await supabase
+        .from("members")
+        .update({
+          avatar_url: avatarUrl,
+        })
+        .eq("id", user.id);
+
+      if (updateError) {
+        console.error("PROFILE UPDATE ERROR:", updateError);
+
+        alert(
+          "Picture uploaded, but profile could not be updated."
+        );
+
+        return;
+      }
+
+      /*
+       * Update screen immediately
+       */
+      setMember((current) => ({
+        ...(current || {}),
+        avatar_url: avatarUrl,
+      }));
+
+      alert("Profile picture updated successfully.");
+    } catch (error) {
+      console.error("PROFILE PHOTO ERROR:", error);
+      alert("Something went wrong while uploading your picture.");
+    } finally {
+      setUploadingPhoto(false);
+      event.target.value = "";
     }
-
-    setLoading(false);
   };
 
+  /*
+   * LOGOUT
+   */
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/");
+    try {
+      setLoading(true);
+
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        console.error("LOGOUT ERROR:", error);
+        setLoading(false);
+        alert("Unable to log out. Please try again.");
+        return;
+      }
+
+      navigate("/", { replace: true });
+    } catch (error) {
+      console.error("LOGOUT ERROR:", error);
+      setLoading(false);
+    }
   };
 
+  /*
+   * LOADING SCREEN
+   */
   if (loading) {
     return (
       <div
@@ -90,12 +325,16 @@ function Dashboard() {
           />
 
           <h2>Loading your account...</h2>
+
           <p>CHSDOSA Cooperative Society</p>
         </div>
       </div>
     );
   }
 
+  /*
+   * GREETING
+   */
   const hour = new Date().getHours();
 
   let greeting = "Good evening";
@@ -106,6 +345,9 @@ function Dashboard() {
     greeting = "Good afternoon";
   }
 
+  /*
+   * SLIDES
+   */
   const slides = [
     {
       title: "CHSDOSA",
@@ -142,21 +384,37 @@ function Dashboard() {
       <div style={styles.backgroundPattern} />
 
       <div style={styles.container}>
+
         {/* TOP HEADER */}
         <div style={styles.header}>
           <div style={styles.profileArea}>
-            <button
+            <label
               style={{
                 ...styles.profilePicture,
                 background: darkMode ? "#d6ad3a" : "#176b3a",
               }}
-              onClick={() => navigate("/profile")}
-              aria-label="Open profile"
+              title="Upload profile picture"
             >
-              {member?.full_name
-                ? member.full_name.charAt(0).toUpperCase()
-                : "M"}
-            </button>
+              {member?.avatar_url ? (
+                <img
+                  src={member.avatar_url}
+                  alt="Member profile"
+                  style={styles.profileImage}
+                />
+              ) : (
+                member?.full_name
+                  ? member.full_name.charAt(0).toUpperCase()
+                  : "M"
+              )}
+
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleProfileUpload}
+                style={styles.hiddenFileInput}
+                disabled={uploadingPhoto}
+              />
+            </label>
 
             <div>
               <p
@@ -190,6 +448,7 @@ function Dashboard() {
               aria-label="Notifications"
             >
               🔔
+
               {notifications > 0 && (
                 <span style={styles.notificationBadge}>
                   {notifications}
@@ -203,7 +462,7 @@ function Dashboard() {
                 background: darkMode ? "#14291f" : "#ffffff",
                 color: darkMode ? "#f4c84d" : "#176b3a",
               }}
-              onClick={() => setDarkMode(!darkMode)}
+              onClick={() => setDarkMode((current) => !current)}
               aria-label="Change theme"
             >
               {darkMode ? "☀️" : "🌙"}
@@ -240,47 +499,60 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* MOVING SLIDESHOW */}
-        <div
-          style={{
-            ...styles.slideshow,
-            background:
-              slide % 2 === 0
-                ? "linear-gradient(135deg, #075b30 0%, #123b25 55%, #c99d28 100%)"
-                : "linear-gradient(135deg, #123b25 0%, #176b3a 60%, #b98a20 100%)",
-          }}
-        >
-          <img
-            src={APP_LOGO}
-            alt="CHSDOSA Cooperative Society"
-            style={styles.slideLogo}
-          />
+        {/* BALANCE */}
+        <div style={styles.balanceCard}>
+          <div style={styles.balanceTop}>
+            <div>
+              <p style={styles.balanceLabel}>
+                AVAILABLE BALANCE
+              </p>
 
-          <div style={styles.slideContent}>
-            <p style={styles.slideSmall}>{slides[slide].subtitle}</p>
+              <div style={styles.balanceRow}>
+                <h1 style={styles.balance}>
+                  {showBalance
+                    ? `₦${Number(balance).toLocaleString("en-NG", {
+                        minimumFractionDigits: 2,
+                      })}`
+                    : "₦••••••••"}
+                </h1>
 
-            <h2 style={styles.slideTitle}>
-              {slides[slide].title}
-            </h2>
+                <button
+                  style={styles.balanceEye}
+                  onClick={() =>
+                    setShowBalance((current) => !current)
+                  }
+                  aria-label={
+                    showBalance
+                      ? "Hide balance"
+                      : "Show balance"
+                  }
+                >
+                  {showBalance ? "👁️" : "🙈"}
+                </button>
+              </div>
 
-            <p style={styles.slideText}>
-              {slides[slide].text}
-            </p>
+              <p style={styles.accountText}>
+                CHSDOSA Cooperative Account
+              </p>
+            </div>
+
+            <div style={styles.balanceIcon}>₦</div>
           </div>
 
-          <div style={styles.slideDots}>
-            {slides.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => setSlide(index)}
-                style={{
-                  ...styles.dot,
-                  width: index === slide ? "24px" : "7px",
-                  opacity: index === slide ? 1 : 0.45,
-                }}
-                aria-label={`Slide ${index + 1}`}
-              />
-            ))}
+          <div style={styles.balanceButtons}>
+            <button
+              style={styles.depositButton}
+              onClick={() => navigate("/deposit")}
+            >
+              + Deposit
+            </button>
+
+            <button
+              style={styles.viewButton}
+              onClick={() => navigate("/transactions")}
+            >
+              View Transactions
+            </button>
           </div>
         </div>
 
@@ -324,41 +596,49 @@ function Dashboard() {
           )}
         </div>
 
-        {/* BALANCE */}
-        <div style={styles.balanceCard}>
-          <div style={styles.balanceTop}>
-            <div>
-              <p style={styles.balanceLabel}>AVAILABLE BALANCE</p>
+        {/* MOVING SLIDESHOW */}
+        <div
+          style={{
+            ...styles.slideshow,
+            background:
+              slide % 2 === 0
+                ? "linear-gradient(135deg, #075b30 0%, #123b25 55%, #c99d28 100%)"
+                : "linear-gradient(135deg, #123b25 0%, #176b3a 60%, #b98a20 100%)",
+          }}
+        >
+          <img
+            src={APP_LOGO}
+            alt=""
+            style={styles.slideBackgroundLogo}
+          />
 
-              <h1 style={styles.balance}>
-                ₦
-                {Number(balance).toLocaleString("en-NG", {
-                  minimumFractionDigits: 2,
-                })}
-              </h1>
+          <div style={styles.slideContent}>
+            <p style={styles.slideSmall}>
+              {slides[slide].subtitle}
+            </p>
 
-              <p style={styles.accountText}>
-                CHSDOSA Cooperative Account
-              </p>
-            </div>
+            <h2 style={styles.slideTitle}>
+              {slides[slide].title}
+            </h2>
 
-            <div style={styles.balanceIcon}>₦</div>
+            <p style={styles.slideText}>
+              {slides[slide].text}
+            </p>
           </div>
 
-          <div style={styles.balanceButtons}>
-            <button
-              style={styles.depositButton}
-              onClick={() => navigate("/deposit")}
-            >
-              + Deposit
-            </button>
-
-            <button
-              style={styles.viewButton}
-              onClick={() => navigate("/transactions")}
-            >
-              View Transactions
-            </button>
+          <div style={styles.slideDots}>
+            {slides.map((_, index) => (
+              <button
+                key={index}
+                onClick={() => setSlide(index)}
+                style={{
+                  ...styles.dot,
+                  width: index === slide ? "20px" : "6px",
+                  opacity: index === slide ? 1 : 0.45,
+                }}
+                aria-label={`Slide ${index + 1}`}
+              />
+            ))}
           </div>
         </div>
 
@@ -445,45 +725,6 @@ function Dashboard() {
           </button>
         </div>
 
-        {/* HELP / ADMIN CONTACT */}
-        <div
-          style={{
-            ...styles.helpCard,
-            background: darkMode ? "#10251a" : "#ffffff",
-            borderColor: darkMode ? "#234432" : "#e0e9e1",
-          }}
-        >
-          <div>
-            <h3
-              style={{
-                ...styles.helpTitle,
-                color: darkMode ? "#ffffff" : "#173522",
-              }}
-            >
-              Need Help?
-            </h3>
-
-            <p
-              style={{
-                ...styles.helpText,
-                color: darkMode ? "#b7c8bd" : "#69766e",
-              }}
-            >
-              Contact CHSDOSA Cooperative administrators for
-              assistance.
-            </p>
-          </div>
-
-          <button
-            style={styles.helpButton}
-            onClick={() => {
-              alert("Admin Contact and Help section coming next.");
-            }}
-          >
-            Help
-          </button>
-        </div>
-
         {/* BOTTOM NAVIGATION */}
         <div
           style={{
@@ -495,7 +736,10 @@ function Dashboard() {
           <button
             style={styles.navButtonActive}
             onClick={() =>
-              window.scrollTo({ top: 0, behavior: "smooth" })
+              window.scrollTo({
+                top: 0,
+                behavior: "smooth",
+              })
             }
           >
             <span>⌂</span>
@@ -557,7 +801,7 @@ function Dashboard() {
 const styles = {
   page: {
     minHeight: "100vh",
-    padding: "18px 14px 100px",
+    padding: "15px 12px 100px",
     boxSizing: "border-box",
     position: "relative",
     overflowX: "hidden",
@@ -589,49 +833,69 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: "16px",
+    marginBottom: "12px",
   },
 
   profileArea: {
     display: "flex",
     alignItems: "center",
-    gap: "11px",
+    gap: "9px",
   },
 
   profilePicture: {
-    width: "48px",
-    height: "48px",
+    width: "44px",
+    height: "44px",
     borderRadius: "50%",
     border: "3px solid #d6ad3a",
     color: "white",
-    fontSize: "20px",
+    fontSize: "18px",
     fontWeight: "800",
     cursor: "pointer",
     boxShadow: "0 5px 15px rgba(0,0,0,0.12)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    position: "relative",
+  },
+
+  profileImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+
+  hiddenFileInput: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    opacity: 0,
+    cursor: "pointer",
   },
 
   smallGreeting: {
     margin: 0,
-    fontSize: "12px",
+    fontSize: "11px",
   },
 
   memberName: {
     margin: "2px 0 0",
-    fontSize: "17px",
+    fontSize: "16px",
   },
 
   headerActions: {
     display: "flex",
-    gap: "8px",
+    gap: "7px",
   },
 
   circleButton: {
-    width: "42px",
-    height: "42px",
+    width: "39px",
+    height: "39px",
     borderRadius: "50%",
     border: "1px solid rgba(0,0,0,0.06)",
     cursor: "pointer",
-    fontSize: "18px",
+    fontSize: "17px",
     position: "relative",
     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
   },
@@ -654,14 +918,14 @@ const styles = {
   brandRow: {
     display: "flex",
     alignItems: "center",
-    gap: "9px",
-    marginBottom: "14px",
+    gap: "8px",
+    marginBottom: "11px",
   },
 
   brandLogo: {
-    width: "38px",
-    height: "38px",
-    borderRadius: "10px",
+    width: "34px",
+    height: "34px",
+    borderRadius: "9px",
     objectFit: "contain",
     background: "#ffffff",
     padding: "2px",
@@ -670,116 +934,16 @@ const styles = {
 
   brandText: {
     margin: "2px 0 0",
-    fontSize: "11px",
-  },
-
-  slideshow: {
-    minHeight: "180px",
-    borderRadius: "22px",
-    padding: "24px",
-    boxSizing: "border-box",
-    color: "white",
-    position: "relative",
-    overflow: "hidden",
-    marginBottom: "18px",
-    boxShadow: "0 12px 30px rgba(10,60,35,0.20)",
-    transition: "background 0.6s ease",
-  },
-
-  slideLogo: {
-    position: "absolute",
-    right: "18px",
-    top: "13px",
-    width: "62px",
-    height: "62px",
-    borderRadius: "50%",
-    border: "2px solid rgba(244,200,77,0.8)",
-    background: "#ffffff",
-    padding: "3px",
-    objectFit: "contain",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-  },
-
-  slideContent: {
-    maxWidth: "80%",
-  },
-
-  slideSmall: {
-    margin: 0,
     fontSize: "10px",
-    letterSpacing: "1.8px",
-    color: "#f4c84d",
-    fontWeight: "700",
-  },
-
-  slideTitle: {
-    margin: "7px 0",
-    fontSize: "25px",
-    lineHeight: 1.1,
-    fontWeight: "900",
-  },
-
-  slideText: {
-    margin: 0,
-    fontSize: "13px",
-    lineHeight: 1.5,
-    color: "rgba(255,255,255,0.88)",
-  },
-
-  slideDots: {
-    position: "absolute",
-    bottom: "16px",
-    left: "24px",
-    display: "flex",
-    gap: "5px",
-    alignItems: "center",
-  },
-
-  dot: {
-    height: "7px",
-    padding: 0,
-    border: "none",
-    borderRadius: "10px",
-    background: "#f4c84d",
-    cursor: "pointer",
-    transition: "all 0.3s ease",
-  },
-
-  welcome: {
-    padding: "17px",
-    borderRadius: "18px",
-    marginBottom: "17px",
-    border: "1px solid",
-    boxShadow: "0 5px 18px rgba(0,0,0,0.04)",
-  },
-
-  welcomeTitle: {
-    margin: 0,
-    fontSize: "19px",
-  },
-
-  welcomeText: {
-    margin: "7px 0 0",
-    fontSize: "13px",
-    lineHeight: 1.5,
-  },
-
-  memberNumberBox: {
-    marginTop: "14px",
-    padding: "10px 12px",
-    borderRadius: "10px",
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: "12px",
   },
 
   balanceCard: {
     background:
       "linear-gradient(135deg, #075b30 0%, #123b25 62%, #c99d28 150%)",
     color: "white",
-    padding: "22px",
-    borderRadius: "21px",
-    marginBottom: "21px",
+    padding: "18px",
+    borderRadius: "19px",
+    marginBottom: "14px",
     boxShadow: "0 13px 28px rgba(10,70,40,0.23)",
   },
 
@@ -791,27 +955,42 @@ const styles = {
 
   balanceLabel: {
     margin: 0,
-    fontSize: "11px",
+    fontSize: "10px",
     letterSpacing: "1px",
     opacity: 0.82,
   },
 
+  balanceRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+
   balance: {
-    margin: "8px 0 4px",
-    fontSize: "35px",
+    margin: "7px 0 3px",
+    fontSize: "31px",
     lineHeight: 1.1,
+  },
+
+  balanceEye: {
+    border: "none",
+    background: "rgba(255,255,255,0.12)",
+    borderRadius: "9px",
+    padding: "6px 8px",
+    cursor: "pointer",
+    fontSize: "15px",
   },
 
   accountText: {
     margin: 0,
     opacity: 0.72,
-    fontSize: "12px",
+    fontSize: "10px",
   },
 
   balanceIcon: {
-    width: "52px",
-    height: "52px",
-    borderRadius: "16px",
+    width: "46px",
+    height: "46px",
+    borderRadius: "14px",
     border: "1px solid rgba(255,255,255,0.25)",
     background: "rgba(255,255,255,0.10)",
     display: "flex",
@@ -819,100 +998,172 @@ const styles = {
     justifyContent: "center",
     color: "#f4c84d",
     fontWeight: "900",
-    fontSize: "25px",
+    fontSize: "23px",
   },
 
   balanceButtons: {
     display: "flex",
-    gap: "9px",
-    marginTop: "19px",
+    gap: "8px",
+    marginTop: "15px",
   },
 
   depositButton: {
     flex: 1,
-    padding: "12px",
+    padding: "10px",
     border: "none",
-    borderRadius: "11px",
+    borderRadius: "10px",
     background: "#f4c84d",
     color: "#173522",
     fontWeight: "800",
     cursor: "pointer",
+    fontSize: "12px",
   },
 
   viewButton: {
     flex: 1,
-    padding: "12px",
+    padding: "10px",
     border: "1px solid rgba(255,255,255,0.35)",
-    borderRadius: "11px",
+    borderRadius: "10px",
     background: "rgba(255,255,255,0.10)",
     color: "white",
     fontWeight: "700",
     cursor: "pointer",
+    fontSize: "12px",
+  },
+
+  welcome: {
+    padding: "14px",
+    borderRadius: "16px",
+    marginBottom: "13px",
+    border: "1px solid",
+    boxShadow: "0 5px 18px rgba(0,0,0,0.04)",
+  },
+
+  welcomeTitle: {
+    margin: 0,
+    fontSize: "17px",
+  },
+
+  welcomeText: {
+    margin: "6px 0 0",
+    fontSize: "11px",
+    lineHeight: 1.5,
+  },
+
+  memberNumberBox: {
+    marginTop: "10px",
+    padding: "8px 10px",
+    borderRadius: "9px",
+    display: "flex",
+    justifyContent: "space-between",
+    fontSize: "11px",
+  },
+
+  slideshow: {
+    minHeight: "110px",
+    borderRadius: "16px",
+    padding: "15px",
+    boxSizing: "border-box",
+    color: "white",
+    position: "relative",
+    overflow: "hidden",
+    marginBottom: "15px",
+    boxShadow: "0 10px 24px rgba(10,60,35,0.17)",
+    transition: "background 0.6s ease",
+  },
+
+  slideBackgroundLogo: {
+    position: "absolute",
+    right: "-18px",
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: "125px",
+    height: "125px",
+    objectFit: "contain",
+    opacity: 0.09,
+    filter: "grayscale(100%) brightness(2)",
+    pointerEvents: "none",
+  },
+
+  slideContent: {
+    maxWidth: "82%",
+    position: "relative",
+    zIndex: 2,
+  },
+
+  slideSmall: {
+    margin: 0,
+    fontSize: "8px",
+    letterSpacing: "1.4px",
+    color: "#f4c84d",
+    fontWeight: "700",
+  },
+
+  slideTitle: {
+    margin: "4px 0",
+    fontSize: "18px",
+    lineHeight: 1.1,
+    fontWeight: "900",
+  },
+
+  slideText: {
+    margin: 0,
+    fontSize: "10px",
+    lineHeight: 1.4,
+    color: "rgba(255,255,255,0.88)",
+  },
+
+  slideDots: {
+    position: "absolute",
+    bottom: "8px",
+    left: "15px",
+    display: "flex",
+    gap: "4px",
+    alignItems: "center",
+    zIndex: 3,
+  },
+
+  dot: {
+    height: "5px",
+    padding: 0,
+    border: "none",
+    borderRadius: "10px",
+    background: "#f4c84d",
+    cursor: "pointer",
+    transition: "all 0.3s ease",
   },
 
   sectionHeader: {
-    marginBottom: "10px",
+    marginBottom: "8px",
   },
 
   sectionTitle: {
     margin: 0,
-    fontSize: "17px",
+    fontSize: "16px",
   },
 
   grid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "12px",
+    gap: "10px",
   },
 
   menu: {
-    padding: "19px 10px",
+    padding: "16px 9px",
     border: "1px solid rgba(100,120,105,0.12)",
-    borderRadius: "17px",
-    fontSize: "14px",
+    borderRadius: "15px",
+    fontSize: "12px",
     cursor: "pointer",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "8px",
+    gap: "6px",
     boxShadow: "0 5px 15px rgba(0,0,0,0.04)",
     transition: "transform 0.2s ease",
   },
 
   icon: {
-    fontSize: "27px",
-  },
-
-  helpCard: {
-    marginTop: "18px",
-    padding: "16px",
-    borderRadius: "17px",
-    border: "1px solid",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "12px",
-  },
-
-  helpTitle: {
-    margin: 0,
-    fontSize: "16px",
-  },
-
-  helpText: {
-    margin: "5px 0 0",
-    fontSize: "11px",
-    lineHeight: 1.4,
-  },
-
-  helpButton: {
-    border: "none",
-    borderRadius: "10px",
-    background: "#176b3a",
-    color: "white",
-    padding: "10px 16px",
-    fontWeight: "700",
-    cursor: "pointer",
+    fontSize: "24px",
   },
 
   bottomNav: {
@@ -920,10 +1171,10 @@ const styles = {
     bottom: "10px",
     left: "50%",
     transform: "translateX(-50%)",
-    width: "calc(100% - 28px)",
-    maxWidth: "572px",
-    padding: "9px 5px",
-    borderRadius: "18px",
+    width: "calc(100% - 24px)",
+    maxWidth: "576px",
+    padding: "8px 5px",
+    borderRadius: "17px",
     border: "1px solid",
     display: "grid",
     gridTemplateColumns: "repeat(4, 1fr)",
@@ -938,7 +1189,7 @@ const styles = {
     flexDirection: "column",
     alignItems: "center",
     gap: "3px",
-    fontSize: "19px",
+    fontSize: "18px",
     cursor: "pointer",
   },
 
@@ -950,17 +1201,17 @@ const styles = {
     flexDirection: "column",
     alignItems: "center",
     gap: "3px",
-    fontSize: "19px",
+    fontSize: "18px",
     fontWeight: "800",
     cursor: "pointer",
   },
 
   logout: {
     width: "100%",
-    marginTop: "18px",
-    padding: "12px",
+    marginTop: "16px",
+    padding: "11px",
     border: "1px solid #e3d8d8",
-    borderRadius: "12px",
+    borderRadius: "11px",
     background: "transparent",
     color: "#a13a3a",
     fontWeight: "700",
@@ -969,9 +1220,9 @@ const styles = {
 
   footer: {
     textAlign: "center",
-    fontSize: "10px",
+    fontSize: "9px",
     lineHeight: 1.5,
-    margin: "14px 20px 0",
+    margin: "12px 18px 0",
   },
 
   loading: {

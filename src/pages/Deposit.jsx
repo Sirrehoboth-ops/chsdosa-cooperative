@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import PaystackPop from "@paystack/inline-js";
 import { supabase } from "../lib/supabase";
 
 function Deposit() {
@@ -9,54 +10,133 @@ function Deposit() {
   const [loading, setLoading] = useState(false);
 
   const handleContinue = async () => {
-    if (!amount || Number(amount) <= 0) {
+    const depositAmount = Number(amount);
+
+    if (!depositAmount || depositAmount <= 0) {
       alert("Please enter a valid amount.");
       return;
     }
 
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    try {
+      // Check logged-in member
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    if (!user) {
-      setLoading(false);
-      alert("Your session has expired. Please login again.");
-      navigate("/login");
-      return;
-    }
+      if (userError || !user) {
+        alert("Your session has expired. Please login again.");
+        navigate("/login");
+        return;
+      }
 
-    const reference =
-      "DEP-" +
-      Date.now() +
-      "-" +
-      Math.floor(1000 + Math.random() * 9000);
+      // Initialize payment through Supabase Edge Function
+      const { data, error } = await supabase.functions.invoke(
+        "initialize-payment",
+        {
+          body: {
+            amount: depositAmount,
+          },
+        }
+      );
 
-    const { error } = await supabase.from("transactions").insert({
-      member_id: user.id,
-      type: "deposit",
-      amount: Number(amount),
-      status: "pending",
-      reference: reference,
-      description: "Cooperative account deposit",
-    });
+      if (error) {
+        console.error("PAYMENT INITIALIZATION ERROR:", error);
+        alert(error.message || "Unable to start payment.");
+        return;
+      }
 
-    setLoading(false);
+      if (!data?.access_code) {
+        console.error("PAYSTACK RESPONSE:", data);
+        alert(data?.error || "Unable to start Paystack payment.");
+        return;
+      }
 
-    if (error) {
+      // Open Paystack inside the app
+      const popup = new PaystackPop();
+
+      popup.resumeTransaction(data.access_code, {
+        onSuccess: async (transaction) => {
+          console.log("PAYSTACK SUCCESS:", transaction);
+
+          const paymentReference =
+            transaction?.reference || data.reference;
+
+          try {
+            setLoading(true);
+
+            // Verify payment through Supabase Edge Function
+            const {
+              data: verificationData,
+              error: verificationError,
+            } = await supabase.functions.invoke("verify-payment", {
+              body: {
+                reference: paymentReference,
+              },
+            });
+
+            if (verificationError) {
+              console.error(
+                "PAYMENT VERIFICATION ERROR:",
+                verificationError
+              );
+
+              alert(
+                "Payment was received, but verification could not be completed. Please contact the administrator."
+              );
+
+              return;
+            }
+
+            if (!verificationData?.success) {
+              alert(
+                verificationData?.message ||
+                  verificationData?.error ||
+                  "Payment could not be verified."
+              );
+
+              return;
+            }
+
+            alert(
+              `Payment successful! 🎉\n\nAmount: ₦${Number(
+                verificationData.amount
+              ).toLocaleString("en-NG", {
+                minimumFractionDigits: 2,
+              })}\n\nYour CHSDOSA account has been credited.`
+            );
+
+            setAmount("");
+
+            navigate("/dashboard");
+          } catch (error) {
+            console.error("VERIFICATION ERROR:", error);
+
+            alert(
+              "Payment was completed, but verification could not be completed. Please contact the administrator."
+            );
+          } finally {
+            setLoading(false);
+          }
+        },
+
+        onCancel: () => {
+          alert("Payment was cancelled.");
+        },
+
+        onError: (error) => {
+          console.error("PAYSTACK ERROR:", error);
+          alert("Payment could not be completed.");
+        },
+      });
+    } catch (error) {
       console.error("DEPOSIT ERROR:", error);
-      alert(error.message);
-      return;
+      alert("Something went wrong while starting payment.");
+    } finally {
+      setLoading(false);
     }
-
-    alert(
-      `Deposit request created successfully.\n\nAmount: ₦${Number(
-        amount
-      ).toLocaleString("en-NG")}\nStatus: Pending`
-    );
-
-    setAmount("");
   };
 
   return (
@@ -88,6 +168,7 @@ function Deposit() {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               style={styles.input}
+              min="1"
             />
           </div>
 

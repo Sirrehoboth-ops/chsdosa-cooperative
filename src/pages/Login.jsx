@@ -147,16 +147,17 @@ function Login() {
 
         {/* Real CHSDOSA Logo */}
         <div style={styles.logoArea}>
-          <img
-            src="/WhatsApp%20Image%202026-09-25%20at%205.35.34%20PM.jpeg"
-            alt="CHSDOSA Cooperative Society"
-            style={styles.logoImage}
-          />
+         <img
+         src={`${import.meta.env.BASE_URL}chsdosa-icon.png`}
+         alt="CHSDOSA Cooperative Society"
+         style={styles.logoImage}
+        /> 
         </div>
 
         <div style={styles.brand}>
           CHSDOSA
         </div>
+      
 
         <div style={styles.badge}>
           MEMBER PORTAL
