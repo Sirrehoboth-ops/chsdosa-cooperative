@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
+const APP_LOGO = "/chsdosa-cooperative/chsdosa-icon.png";
+
 function Dashboard() {
   const navigate = useNavigate();
 
@@ -81,7 +83,12 @@ function Dashboard() {
         }}
       >
         <div style={styles.loadingBox}>
-          <div style={styles.loadingLogo}>C</div>
+          <img
+            src={APP_LOGO}
+            alt="CHSDOSA Cooperative Society"
+            style={styles.loadingLogo}
+          />
+
           <h2>Loading your account...</h2>
           <p>CHSDOSA Cooperative Society</p>
         </div>
@@ -204,9 +211,13 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* SMALL CHSDOSA BRANDING */}
+        {/* CHSDOSA BRANDING */}
         <div style={styles.brandRow}>
-          <div style={styles.brandLogo}>C</div>
+          <img
+            src={APP_LOGO}
+            alt="CHSDOSA Cooperative Society"
+            style={styles.brandLogo}
+          />
 
           <div>
             <strong
@@ -239,7 +250,11 @@ function Dashboard() {
                 : "linear-gradient(135deg, #123b25 0%, #176b3a 60%, #b98a20 100%)",
           }}
         >
-          <div style={styles.slideLogo}>C</div>
+          <img
+            src={APP_LOGO}
+            alt="CHSDOSA Cooperative Society"
+            style={styles.slideLogo}
+          />
 
           <div style={styles.slideContent}>
             <p style={styles.slideSmall}>{slides[slide].subtitle}</p>
@@ -479,7 +494,9 @@ function Dashboard() {
         >
           <button
             style={styles.navButtonActive}
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            onClick={() =>
+              window.scrollTo({ top: 0, behavior: "smooth" })
+            }
           >
             <span>⌂</span>
             <small>Home</small>
@@ -642,16 +659,13 @@ const styles = {
   },
 
   brandLogo: {
-    width: "31px",
-    height: "31px",
-    borderRadius: "9px",
-    background: "#176b3a",
-    color: "#f4c84d",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: "900",
-    fontSize: "17px",
+    width: "38px",
+    height: "38px",
+    borderRadius: "10px",
+    objectFit: "contain",
+    background: "#ffffff",
+    padding: "2px",
+    boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
   },
 
   brandText: {
@@ -680,13 +694,10 @@ const styles = {
     height: "62px",
     borderRadius: "50%",
     border: "2px solid rgba(244,200,77,0.8)",
-    color: "#f4c84d",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "31px",
-    fontWeight: "900",
-    opacity: 0.9,
+    background: "#ffffff",
+    padding: "3px",
+    objectFit: "contain",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
   },
 
   slideContent: {
@@ -981,13 +992,10 @@ const styles = {
     height: "65px",
     margin: "0 auto 15px",
     borderRadius: "20px",
-    background: "#176b3a",
-    color: "#f4c84d",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "32px",
-    fontWeight: "900",
+    background: "#ffffff",
+    padding: "4px",
+    objectFit: "contain",
+    boxShadow: "0 5px 15px rgba(0,0,0,0.12)",
   },
 };
 

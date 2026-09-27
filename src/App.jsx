@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { HashRouter, Routes, Route, useNavigate } from "react-router-dom";
 
 import Register from "./pages/Register";
 import Login from "./pages/Login";
@@ -303,7 +303,6 @@ function Welcome() {
 
       <div style={styles.page} className="welcome-page">
 
-        {/* Background orbs */}
         <div
           style={{
             ...styles.orb,
@@ -320,13 +319,11 @@ function Welcome() {
           className="orb-two"
         />
 
-        {/* Community background */}
         <div
           style={styles.communityBackground}
           className="community-background"
         >
 
-          {/* Person 1 */}
           <div
             style={{
               ...styles.peopleGroup,
@@ -339,7 +336,6 @@ function Welcome() {
             <div style={styles.personArm}></div>
           </div>
 
-          {/* Person 2 */}
           <div
             style={{
               ...styles.peopleGroup,
@@ -352,7 +348,6 @@ function Welcome() {
             <div style={styles.personArm}></div>
           </div>
 
-          {/* Person 3 */}
           <div
             style={{
               ...styles.peopleGroup,
@@ -370,17 +365,15 @@ function Welcome() {
 
         </div>
 
-        {/* Main content */}
         <div style={styles.content}>
 
-          {/* Master logo */}
           <div style={styles.logoWrapper}>
             <div
               style={styles.logoGlowRing}
               className="logo-animation"
             >
               <img
-                src="/WhatsApp%20Image%202026-09-25%20at%205.35.34%20PM.jpeg"
+                src="/chsdosa-cooperative/chsdosa-icon.png"
                 alt="CHSDOSA Cooperative Society"
                 style={styles.logoImage}
               />
@@ -392,7 +385,6 @@ function Welcome() {
             </div>
           </div>
 
-          {/* Badge */}
           <div
             style={styles.statusBadge}
             className="badge-animation"
@@ -400,7 +392,6 @@ function Welcome() {
             COOPERATIVE SOCIETY
           </div>
 
-          {/* CHSDOSA */}
           <h1
             style={styles.logoTitle}
             className="title-animation"
@@ -408,7 +399,6 @@ function Welcome() {
             CHSDOSA
           </h1>
 
-          {/* Heading */}
           <h2
             style={styles.heading}
             className="heading-animation"
@@ -418,7 +408,6 @@ function Welcome() {
             Growing Together.
           </h2>
 
-          {/* Motto */}
           <p
             style={styles.motto}
             className="motto-animation"
@@ -426,7 +415,6 @@ function Welcome() {
             Leadership with Integrity, Unity and Progress
           </p>
 
-          {/* Joining hands */}
           <div
             style={styles.handsWrapper}
             className="hands-animation"
@@ -438,7 +426,6 @@ function Welcome() {
 
           <div style={styles.divider}></div>
 
-          {/* Welcome card */}
           <div
             style={styles.welcomeCard}
             className="card-animation"
@@ -458,7 +445,6 @@ function Welcome() {
             </p>
           </div>
 
-          {/* Buttons */}
           <div style={styles.buttons}>
 
             <button
@@ -488,7 +474,6 @@ function Welcome() {
 
           </div>
 
-          {/* Footer */}
           <div
             style={styles.footer}
             className="footer-animation"
@@ -519,7 +504,7 @@ function Welcome() {
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
 
         <Route
@@ -553,7 +538,7 @@ function App() {
         />
 
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
@@ -595,8 +580,6 @@ const styles = {
     zIndex: 5,
   },
 
-  /* Background */
-
   orb: {
     position: "absolute",
     borderRadius: "50%",
@@ -619,8 +602,6 @@ const styles = {
     right: "-75px",
     background: "rgba(211,155,50,0.11)",
   },
-
-  /* People */
 
   communityBackground: {
     position: "absolute",
@@ -707,8 +688,6 @@ const styles = {
     transform: "rotate(12deg)",
   },
 
-  /* Logo */
-
   logoWrapper: {
     width: "128px",
     height: "128px",
@@ -766,8 +745,6 @@ const styles = {
     pointerEvents: "none",
   },
 
-  /* Text */
-
   statusBadge: {
     display: "inline-block",
 
@@ -824,8 +801,6 @@ const styles = {
     fontWeight: "600",
   },
 
-  /* Hands */
-
   handsWrapper: {
     width: "58px",
     height: "42px",
@@ -861,8 +836,6 @@ const styles = {
     background:
       "linear-gradient(90deg, #173b63, #d39b32)",
   },
-
-  /* Welcome card */
 
   welcomeCard: {
     padding: "17px 17px",
@@ -905,8 +878,6 @@ const styles = {
 
     fontWeight: "500",
   },
-
-  /* Buttons */
 
   buttons: {
     width: "100%",
@@ -972,8 +943,6 @@ const styles = {
     boxShadow:
       "0 5px 15px rgba(23,59,99,0.06)",
   },
-
-  /* Footer */
 
   footer: {
     marginTop: "23px",

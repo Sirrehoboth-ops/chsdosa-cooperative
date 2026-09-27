@@ -3,10 +3,14 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  base: '/chsdosa-cooperative/',
+
   plugins: [
     react(),
+
     VitePWA({
       registerType: 'autoUpdate',
+
       manifest: {
         name: 'CHSDOSA Cooperative Society',
         short_name: 'CHSDOSA',
@@ -14,15 +18,17 @@ export default defineConfig({
         theme_color: '#0B1F3A',
         background_color: '#F8F9FA',
         display: 'standalone',
-        start_url: '/',
+        start_url: '/chsdosa-cooperative/',
+        scope: '/chsdosa-cooperative/',
+
         icons: [
           {
-            src: '/chsdosa-icon.png',
+            src: '/chsdosa-cooperative/chsdosa-icon.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/chsdosa-icon.png',
+            src: '/chsdosa-cooperative/chsdosa-icon.png',
             sizes: '512x512',
             type: 'image/png'
           }
