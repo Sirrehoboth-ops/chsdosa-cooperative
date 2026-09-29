@@ -95,6 +95,8 @@ export default function Meeting() {
   const [seatAssignments, setSeatAssignments] = useState({});
 
   const [showActive, setShowActive] = useState(false);
+  const [showFunMenu, setShowFunMenu] = useState(false);
+
   const [message, setMessage] = useState("");
 
   const [connectionStatus, setConnectionStatus] = useState("");
@@ -499,6 +501,8 @@ export default function Meeting() {
       return;
     }
 
+    setShowFunMenu(false);
+
     showFunAnimation(
       emoji,
       "reaction",
@@ -537,6 +541,8 @@ export default function Meeting() {
       alert("Please join the meeting first.");
       return;
     }
+
+    setShowFunMenu(false);
 
     showFunAnimation(
       "🩴",
@@ -577,6 +583,8 @@ export default function Meeting() {
       return;
     }
 
+    setShowFunMenu(false);
+
     showFunAnimation(
       gift.emoji,
       "gift",
@@ -609,7 +617,7 @@ export default function Meeting() {
 
   /* =========================
      FREE ROOM MUSIC
-     ========================= */
+  ========================= */
 
   const stopRoomMusic = () => {
     try {
@@ -702,6 +710,7 @@ export default function Meeting() {
         gain.connect(context.destination);
 
         oscillator.start();
+
         oscillator.stop(
           context.currentTime + 0.5
         );
@@ -730,6 +739,8 @@ export default function Meeting() {
       alert("Please join the meeting first.");
       return;
     }
+
+    setShowFunMenu(false);
 
     if (musicPlaying) {
       stopRoomMusic();
@@ -1567,6 +1578,7 @@ export default function Meeting() {
     setSelectedSeat(null);
     setSpeakingIds([]);
     setConnectionStatus("");
+    setShowFunMenu(false);
 
     setActiveMembers((old) =>
       old.filter(
@@ -2079,7 +2091,7 @@ export default function Meeting() {
 
         <style>{`
           .meeting-loading {
-            min-height: 100vh;
+            height: 100dvh;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -2148,15 +2160,21 @@ export default function Meeting() {
         body,
         #root {
           margin: 0;
-          min-height: 100%;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
         }
 
         body {
-          margin: 0;
           font-family:
             Arial,
             Helvetica,
             sans-serif;
+        }
+
+        button,
+        input {
+          font-family: inherit;
         }
 
         .audio-container {
@@ -2170,12 +2188,26 @@ export default function Meeting() {
           pointer-events: none;
         }
 
+        /* =========================
+           FULL SCREEN MEETING
+        ========================= */
+
         .meeting-page {
-          min-height: 100vh;
+          width: 100%;
+          height: 100dvh;
+          min-height: 100dvh;
+
           color: white;
-          overflow-x: hidden;
+
+          overflow: hidden;
+
           position: relative;
           isolation: isolate;
+
+          display: flex;
+          flex-direction: column;
+
+          overscroll-behavior: none;
         }
 
         .live-background {
@@ -2189,6 +2221,7 @@ export default function Meeting() {
           position: absolute;
           inset: 0;
           opacity: 0;
+
           transition:
             opacity 2.5s
             ease-in-out;
@@ -2202,30 +2235,38 @@ export default function Meeting() {
           content: "";
           position: fixed;
           inset: 0;
+
           background:
             radial-gradient(
               circle at 50% 8%,
               rgba(255,255,255,.12),
               transparent 32%
             );
+
           pointer-events: none;
           z-index: -2;
         }
 
+        /* =========================
+           HEADER
+        ========================= */
+
         .meeting-header {
-          height: 54px;
-          position: sticky;
-          top: 0;
+          height: 52px;
+          min-height: 52px;
+          flex: 0 0 52px;
+
+          position: relative;
           z-index: 50;
 
           display: flex;
           align-items: center;
           justify-content: space-between;
 
-          padding: 7px 10px;
+          padding: 6px 9px;
 
           background:
-            rgba(0,0,0,.42);
+            rgba(0,0,0,.45);
 
           backdrop-filter:
             blur(16px);
@@ -2240,22 +2281,26 @@ export default function Meeting() {
           border: 0;
           color: white;
           cursor: pointer;
+
           background:
             rgba(255,255,255,.12);
+
+          -webkit-tap-highlight-color:
+            transparent;
         }
 
         .back-button {
-          width: 38px;
-          height: 38px;
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
-          font-size: 21px;
+          font-size: 20px;
         }
 
         .active-button {
-          padding: 8px 11px;
+          padding: 7px 10px;
           border-radius: 20px;
           font-weight: 800;
-          font-size: 11px;
+          font-size: 10px;
         }
 
         .meeting-title {
@@ -2266,11 +2311,11 @@ export default function Meeting() {
         }
 
         .meeting-title strong {
-          font-size: 13px;
+          font-size: 12px;
         }
 
         .meeting-title span {
-          font-size: 8px;
+          font-size: 7px;
           opacity: .85;
         }
 
@@ -2279,44 +2324,70 @@ export default function Meeting() {
           width: 6px;
           height: 6px;
           margin-right: 4px;
+
           background: #ef4444;
           border-radius: 50%;
+
           box-shadow:
             0 0 10px
             rgba(239,68,68,.9);
         }
 
+        /* =========================
+           MAIN SCREEN
+        ========================= */
+
         .meeting-content {
           width: min(100%, 570px);
-          margin: auto;
+
+          margin: 0 auto;
+
+          flex: 1 1 auto;
+          min-height: 0;
+
           padding:
-            9px
-            9px
-            115px;
+            5px 7px
+            68px;
+
           position: relative;
           z-index: 2;
+
+          overflow: hidden;
+
+          display: flex;
+          flex-direction: column;
         }
 
         .room-heading {
           text-align: center;
-          margin-bottom: 8px;
+
+          flex: 0 0 auto;
+
+          margin-bottom: 4px;
         }
 
         .room-heading h2 {
           margin: 0;
-          font-size: 15px;
-          letter-spacing: .5px;
+
+          font-size: 13px;
+          line-height: 16px;
+
+          letter-spacing: .4px;
         }
 
         .room-heading p {
-          margin: 3px 0 0;
-          font-size: 9px;
+          margin: 1px 0 0;
+
+          font-size: 7px;
+          line-height: 9px;
+
           opacity: .7;
         }
 
         .room-card {
-          padding: 8px;
-          border-radius: 16px;
+          padding: 6px;
+
+          border-radius: 13px;
 
           background:
             rgba(0,0,0,.20);
@@ -2329,8 +2400,10 @@ export default function Meeting() {
             blur(13px);
 
           box-shadow:
-            0 8px 24px
+            0 6px 18px
             rgba(0,0,0,.12);
+
+          flex-shrink: 0;
         }
 
         .card-heading {
@@ -2338,17 +2411,21 @@ export default function Meeting() {
           align-items: center;
           justify-content: space-between;
 
-          margin-bottom: 6px;
+          margin-bottom: 4px;
 
-          font-size: 9px;
+          font-size: 8px;
           font-weight: 900;
-          letter-spacing: .5px;
+          letter-spacing: .4px;
         }
 
         .card-heading span:last-child {
           opacity: .65;
-          font-size: 7px;
+          font-size: 6px;
         }
+
+        /* =========================
+           ADMINISTRATION
+        ========================= */
 
         .admin-main {
           display: flex;
@@ -2360,20 +2437,24 @@ export default function Meeting() {
         }
 
         .main-admin {
-          width: 112px;
+          width: 95px;
         }
 
         .admin-avatar-big {
-          width: 76px;
-          height: 76px;
+          width: 55px;
+          height: 55px;
+
           margin: auto;
+
           position: relative;
         }
 
         .admin-avatar {
-          width: 48px;
-          height: 48px;
+          width: 36px;
+          height: 36px;
+
           margin: auto;
+
           position: relative;
         }
 
@@ -2381,8 +2462,10 @@ export default function Meeting() {
         .admin-avatar-big img {
           width: 100%;
           height: 100%;
+
           object-fit: cover;
           border-radius: 50%;
+
           border:
             2px solid
             rgba(255,255,255,.85);
@@ -2390,54 +2473,68 @@ export default function Meeting() {
 
         .admin-avatar-big img {
           border:
-            3px solid #facc15;
+            2px solid #facc15;
 
           box-shadow:
-            0 0 0 5px
+            0 0 0 3px
               rgba(250,204,21,.15),
-            0 0 22px
+            0 0 15px
               rgba(250,204,21,.25);
         }
 
         .crown {
           position: absolute;
-          right: -5px;
+          right: -4px;
           bottom: -2px;
-          font-size: 20px;
+          font-size: 15px;
         }
 
         .small-crown {
           position: absolute;
           right: -4px;
           bottom: -3px;
-          font-size: 13px;
+          font-size: 10px;
         }
 
         .admin-seat strong {
           display: block;
-          margin-top: 3px;
-          font-size: 10px;
+
+          margin-top: 2px;
+
+          font-size: 8px;
         }
 
         .admin-seat small {
           display: block;
+
           margin-top: 1px;
-          font-size: 7px;
+
+          font-size: 6px;
           opacity: .65;
         }
 
         .other-admins {
           display: flex;
           justify-content: center;
-          gap: 13px;
-          margin-top: 7px;
+
+          gap: 12px;
+
+          margin-top: 4px;
         }
 
+        /* =========================
+           MEMBER SEATS
+        ========================= */
+
         .members-card {
-          margin-top: 8px;
+          margin-top: 5px;
+
           position: relative;
+
           overflow: hidden;
-          min-height: 250px;
+
+          flex: 1 1 auto;
+          min-height: 0;
         }
 
         .members-background-logo {
@@ -2453,10 +2550,12 @@ export default function Meeting() {
         }
 
         .members-background-logo img {
-          width: 245px;
-          height: 245px;
+          width: 190px;
+          height: 190px;
+
           object-fit: contain;
-          opacity: .105;
+
+          opacity: .085;
 
           filter:
             drop-shadow(
@@ -2472,33 +2571,76 @@ export default function Meeting() {
         }
 
         .member-grid {
+          width: 100%;
+          height: calc(100% - 20px);
+
           display: grid;
+
           grid-template-columns:
-            repeat(4, 1fr);
-          gap: 7px 3px;
+            repeat(4, minmax(0, 1fr));
+
+          grid-template-rows:
+            repeat(
+              5,
+              minmax(0, 1fr)
+            );
+
+          gap: 1px 2px;
+
+          overflow: hidden;
         }
 
         .member-seat {
           min-width: 0;
-          padding: 3px;
+          min-height: 0;
+
+          padding: 1px;
+
           border: 0;
-          background: transparent;
+
+          background:
+            transparent;
+
           color: white;
+
           cursor: pointer;
+
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+
+          -webkit-tap-highlight-color:
+            transparent;
         }
 
         .member-avatar {
-          width: 41px;
-          height: 41px;
+          width: clamp(
+            28px,
+            8vw,
+            39px
+          );
+
+          height: clamp(
+            28px,
+            8vw,
+            39px
+          );
+
           margin: auto;
+
           position: relative;
+
+          flex: 0 0 auto;
         }
 
         .member-avatar img {
           width: 100%;
           height: 100%;
+
           object-fit: cover;
           border-radius: 50%;
+
           border:
             2px solid
             rgba(255,255,255,.75);
@@ -2524,25 +2666,47 @@ export default function Meeting() {
           color:
             rgba(255,255,255,.65);
 
-          font-size: 18px;
+          font-size: 15px;
         }
 
         .member-name {
           display: block;
-          margin-top: 3px;
-          font-size: 7px;
+
+          width: 100%;
+
+          margin-top: 1px;
+
+          font-size: 6px;
+          line-height: 7px;
+
           font-weight: 700;
+
           overflow: hidden;
           white-space: nowrap;
           text-overflow: ellipsis;
+
+          text-align: center;
         }
 
         .member-status {
           display: block;
-          margin-top: 2px;
-          font-size: 6.5px;
+
+          width: 100%;
+
+          margin-top: 1px;
+
+          font-size: 5.5px;
+          line-height: 6px;
+
           color: #86efac;
+
           font-weight: 700;
+
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+
+          text-align: center;
         }
 
         .selected-seat
@@ -2551,18 +2715,21 @@ export default function Meeting() {
             3px solid #22c55e;
 
           box-shadow:
-            0 0 0 5px
+            0 0 0 4px
               rgba(34,197,94,.15),
-            0 0 20px
+            0 0 15px
               rgba(34,197,94,.30);
         }
 
         .speaking-ring {
           position: absolute;
-          inset: -4px;
+          inset: -3px;
+
           border-radius: 50%;
+
           border:
             2px solid #22c55e;
+
           animation:
             speakingPulse 1s infinite;
         }
@@ -2580,10 +2747,16 @@ export default function Meeting() {
           }
         }
 
+        /* =========================
+           ADMIN TOOLS
+        ========================= */
+
         .admin-tools {
-          margin-top: 8px;
-          padding: 10px;
-          border-radius: 15px;
+          margin-top: 5px;
+
+          padding: 5px;
+
+          border-radius: 11px;
 
           background:
             rgba(0,0,0,.30);
@@ -2591,39 +2764,50 @@ export default function Meeting() {
           border:
             1px solid
             rgba(250,204,21,.22);
+
+          flex-shrink: 0;
         }
 
         .admin-tools-title {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-bottom: 8px;
-          font-size: 10px;
+
+          margin-bottom: 4px;
+
+          font-size: 7px;
           font-weight: 900;
         }
 
         .seat-capacity-buttons {
           display: grid;
+
           grid-template-columns:
             repeat(4, 1fr);
-          gap: 5px;
-          margin-bottom: 8px;
+
+          gap: 3px;
+
+          margin-bottom: 4px;
         }
 
         .capacity-button {
-          height: 32px;
+          height: 22px;
 
           border:
             1px solid
             rgba(255,255,255,.14);
 
-          border-radius: 8px;
+          border-radius: 6px;
 
           background:
             rgba(255,255,255,.07);
 
           color: white;
+
+          font-size: 7px;
+
           font-weight: 800;
+
           cursor: pointer;
         }
 
@@ -2634,22 +2818,27 @@ export default function Meeting() {
 
         .admin-actions {
           display: grid;
+
           grid-template-columns:
-            repeat(2, 1fr);
-          gap: 6px;
+            repeat(4, 1fr);
+
+          gap: 3px;
         }
 
         .admin-action {
-          min-height: 36px;
+          min-height: 25px;
+
           border: 0;
-          border-radius: 9px;
+          border-radius: 6px;
+
           color: white;
 
           background:
             rgba(255,255,255,.10);
 
-          font-size: 9px;
+          font-size: 6.5px;
           font-weight: 800;
+
           cursor: pointer;
         }
 
@@ -2664,53 +2853,81 @@ export default function Meeting() {
         }
 
         .admin-tools-note {
-          margin: 7px 0 0;
-          font-size: 7px;
-          opacity: .58;
-          line-height: 1.4;
+          margin: 3px 0 0;
+
+          font-size: 5.5px;
+
+          opacity: .55;
+
+          line-height: 1.2;
         }
 
         .connection-status {
-          margin-top: 7px;
+          margin-top: 3px;
+
           text-align: center;
-          font-size: 9px;
+
+          font-size: 7px;
+
           font-weight: 800;
+
           color: #fde68a;
         }
 
+        /* =========================
+           COMMENTS
+        ========================= */
+
         .comments-card {
-          margin-top: 8px;
+          margin-top: 5px;
+
+          flex-shrink: 0;
         }
 
         .comments-list {
-          max-height: 145px;
+          height: 65px;
+          max-height: 65px;
+
           overflow-y: auto;
+          overflow-x: hidden;
+
           padding-right: 2px;
+
           scroll-behavior: smooth;
+
+          overscroll-behavior:
+            contain;
+
+          scrollbar-width: thin;
         }
 
         .comment {
           display: flex;
           align-items: flex-start;
-          gap: 6px;
 
-          padding: 4px 2px;
+          gap: 5px;
 
-          font-size: 10px;
-          line-height: 1.25;
+          padding: 2px 1px;
+
+          font-size: 8px;
+          line-height: 1.2;
+
           font-weight: 700;
         }
 
         .comment-avatar {
-          width: 24px;
-          height: 24px;
-          flex: 0 0 24px;
+          width: 19px;
+          height: 19px;
+
+          flex: 0 0 19px;
         }
 
         .comment-avatar img {
           width: 100%;
           height: 100%;
+
           border-radius: 50%;
+
           object-fit: cover;
         }
 
@@ -2722,18 +2939,23 @@ export default function Meeting() {
         .tagged-name {
           color: #67e8f9;
           font-weight: 900;
+
           background:
             rgba(34,211,238,.13);
+
           padding:
-            2px 4px;
-          border-radius: 5px;
+            1px 3px;
+
+          border-radius: 4px;
         }
 
         .join-comment {
           color: #86efac;
+
           padding:
-            5px 4px;
-          border-radius: 7px;
+            3px 3px;
+
+          border-radius: 5px;
 
           background:
             rgba(34,197,94,.07);
@@ -2756,28 +2978,34 @@ export default function Meeting() {
 
         .message-area {
           display: flex;
-          gap: 6px;
-          margin-top: 6px;
+
+          gap: 5px;
+
+          margin-top: 4px;
         }
 
         .message-input {
           flex: 1;
           min-width: 0;
-          height: 38px;
-          padding: 0 13px;
+
+          height: 30px;
+
+          padding: 0 10px;
 
           border:
             1px solid
             rgba(255,255,255,.15);
 
-          border-radius: 19px;
+          border-radius: 15px;
+
           outline: none;
 
           background:
             rgba(0,0,0,.25);
 
           color: white;
-          font-size: 12px;
+
+          font-size: 9px;
         }
 
         .message-input::placeholder {
@@ -2786,13 +3014,18 @@ export default function Meeting() {
         }
 
         .send-button {
-          width: 38px;
-          height: 38px;
+          width: 30px;
+          height: 30px;
+
           border: 0;
           border-radius: 50%;
+
           background: #0f766e;
+
           color: white;
-          font-size: 16px;
+
+          font-size: 13px;
+
           cursor: pointer;
         }
 
@@ -2801,67 +3034,359 @@ export default function Meeting() {
         }
 
         /* =========================
-           FUN ROOM BAR
+           FUN MENU
         ========================= */
 
-        .fun-room {
-          margin-top: 8px;
-          padding: 8px;
-          border-radius: 15px;
+        .fun-menu-overlay {
+          position: fixed;
+          inset: 0;
+
+          z-index: 120;
+
+          pointer-events: none;
+        }
+
+        .fun-menu {
+          position: fixed;
+
+          left: 50%;
+
+          bottom:
+            calc(
+              63px +
+              env(safe-area-inset-bottom)
+            );
+
+          transform:
+            translateX(-50%)
+            translateY(10px)
+            scale(.96);
+
+          width:
+            min(
+              calc(100vw - 24px),
+              430px
+            );
+
+          padding: 10px;
+
+          border-radius: 18px;
+
           background:
-            rgba(0,0,0,.25);
+            rgba(9,18,31,.96);
+
           border:
             1px solid
-            rgba(255,255,255,.10);
+            rgba(255,255,255,.14);
+
+          box-shadow:
+            0 15px 45px
+            rgba(0,0,0,.55);
+
+          backdrop-filter:
+            blur(20px);
+
+          pointer-events: auto;
+
+          animation:
+            funMenuIn
+            .18s
+            ease-out
+            forwards;
         }
 
-        .fun-title {
+        @keyframes funMenuIn {
+          from {
+            opacity: 0;
+
+            transform:
+              translateX(-50%)
+              translateY(12px)
+              scale(.92);
+          }
+
+          to {
+            opacity: 1;
+
+            transform:
+              translateX(-50%)
+              translateY(0)
+              scale(1);
+          }
+        }
+
+        .fun-menu-header {
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          margin-bottom: 7px;
-          font-size: 9px;
+          justify-content: space-between;
+
+          margin-bottom: 8px;
+
+          padding:
+            0 2px;
+        }
+
+        .fun-menu-title {
+          font-size: 10px;
           font-weight: 900;
         }
 
-        .free-label {
+        .fun-menu-free {
           font-size: 7px;
           color: #86efac;
+          font-weight: 800;
         }
 
-        .fun-buttons {
-          display: flex;
-          gap: 5px;
-          overflow-x: auto;
-          padding-bottom: 2px;
-        }
+        .fun-menu-close {
+          width: 25px;
+          height: 25px;
 
-        .fun-button {
-          flex: 0 0 auto;
-          min-width: 42px;
-          height: 37px;
           border: 0;
-          border-radius: 11px;
+          border-radius: 50%;
+
           color: white;
+
           background:
-            rgba(255,255,255,.09);
+            rgba(255,255,255,.10);
+
           cursor: pointer;
-          font-size: 18px;
-          transition:
-            transform .15s ease,
-            background .15s ease;
         }
 
-        .fun-button:active {
-          transform: scale(.86);
-          background:
-            rgba(15,118,110,.75);
-        }
+        .fun-menu-section-title {
+          margin:
+            5px 2px;
 
-        .music-button {
-          min-width: 74px;
-          font-size: 9px;
+          font-size: 7px;
+
+          color:
+            rgba(255,255,255,.55);
+
           font-weight: 900;
+        }
+
+        .fun-menu-grid {
+          display: grid;
+
+          grid-template-columns:
+            repeat(6, 1fr);
+
+          gap: 5px;
+        }
+
+        .fun-menu-button {
+          min-width: 0;
+
+          height: 39px;
+
+          border: 0;
+
+          border-radius: 11px;
+
+          color: white;
+
+          background:
+            rgba(255,255,255,.08);
+
+          cursor: pointer;
+
+          font-size: 19px;
+
+          transition:
+            transform .12s ease,
+            background .12s ease;
+
+          -webkit-tap-highlight-color:
+            transparent;
+        }
+
+        .fun-menu-button:active {
+          transform: scale(.84);
+
+          background:
+            rgba(15,118,110,.8);
+        }
+
+        .fun-menu-action {
+          height: 38px;
+
+          border: 0;
+
+          border-radius: 10px;
+
+          color: white;
+
+          background:
+            rgba(255,255,255,.08);
+
+          font-size: 9px;
+
+          font-weight: 900;
+
+          cursor: pointer;
+        }
+
+        .fun-menu-action.music-active {
+          background:
+            #0f766e;
+        }
+
+        .fun-menu-bottom {
+          display: grid;
+
+          grid-template-columns:
+            1fr 1fr;
+
+          gap: 5px;
+
+          margin-top: 5px;
+        }
+
+        /* =========================
+           BOTTOM CONTROLS
+        ========================= */
+
+        .controls {
+          position: fixed;
+
+          left: 0;
+          right: 0;
+          bottom: 0;
+
+          z-index: 130;
+
+          display: flex;
+
+          align-items: center;
+          justify-content: center;
+
+          gap: 6px;
+
+          min-height: 60px;
+
+          padding:
+            6px 6px
+            calc(
+              6px +
+              env(safe-area-inset-bottom)
+            );
+
+          background:
+            rgba(0,0,0,.78);
+
+          backdrop-filter:
+            blur(18px);
+
+          border-top:
+            1px solid
+            rgba(255,255,255,.1);
+        }
+
+        .control {
+          width: 40px;
+          height: 40px;
+
+          flex: 0 0 40px;
+
+          border: 0;
+          border-radius: 50%;
+
+          color: white;
+
+          background:
+            rgba(255,255,255,.12);
+
+          font-size: 16px;
+
+          cursor: pointer;
+
+          -webkit-tap-highlight-color:
+            transparent;
+        }
+
+        .control.active {
+          background: #0f766e;
+        }
+
+        .fun-main-button {
+          position: relative;
+        }
+
+        .fun-main-button.open {
+          background:
+            #0f766e;
+
+          box-shadow:
+            0 0 0 4px
+              rgba(15,118,110,.18);
+        }
+
+        .fun-badge {
+          position: absolute;
+
+          right: -1px;
+          top: -2px;
+
+          width: 13px;
+          height: 13px;
+
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          border-radius: 50%;
+
+          background: #facc15;
+
+          color: #111827;
+
+          font-size: 7px;
+        }
+
+        .join-button {
+          height: 43px;
+
+          padding:
+            0 28px;
+
+          border: 0;
+
+          border-radius: 22px;
+
+          color: white;
+
+          background: #0f766e;
+
+          font-weight: 900;
+          font-size: 11px;
+
+          cursor: pointer;
+
+          box-shadow:
+            0 8px 25px
+            rgba(15,118,110,.35);
+        }
+
+        .leave-button {
+          height: 40px;
+
+          padding:
+            0 13px;
+
+          flex: 0 0 auto;
+
+          border: 0;
+
+          border-radius: 21px;
+
+          color: white;
+
+          background: #dc2626;
+
+          font-weight: 900;
+
+          font-size: 9px;
+
+          cursor: pointer;
         }
 
         /* =========================
@@ -2871,18 +3396,22 @@ export default function Meeting() {
         .fun-animation-layer {
           position: fixed;
           inset: 0;
+
           z-index: 180;
+
           pointer-events: none;
+
           overflow: hidden;
         }
 
         .fun-animation {
           position: absolute;
+
           left: 50%;
           top: 58%;
+
           font-size: 38px;
-          animation:
-            funFloat 2.5s ease-out forwards;
+
           text-shadow:
             0 4px 18px
             rgba(0,0,0,.5);
@@ -2890,22 +3419,32 @@ export default function Meeting() {
 
         .fun-animation.reaction {
           animation:
-            reactionFloat 2.5s ease-out forwards;
+            reactionFloat
+            2.5s
+            ease-out
+            forwards;
         }
 
         .fun-animation.gift {
           animation:
-            giftFloat 2.5s ease-out forwards;
+            giftFloat
+            2.5s
+            ease-out
+            forwards;
         }
 
         .fun-animation.slipper {
           animation:
-            slipperThrow 2.5s cubic-bezier(.2,.7,.2,1) forwards;
+            slipperThrow
+            2.5s
+            cubic-bezier(.2,.7,.2,1)
+            forwards;
         }
 
         @keyframes reactionFloat {
           0% {
             opacity: 0;
+
             transform:
               translate(-50%, 80px)
               scale(.4)
@@ -2918,6 +3457,7 @@ export default function Meeting() {
 
           100% {
             opacity: 0;
+
             transform:
               translate(
                 calc(-50% + 80px),
@@ -2931,6 +3471,7 @@ export default function Meeting() {
         @keyframes giftFloat {
           0% {
             opacity: 0;
+
             transform:
               translate(-50%, 100px)
               scale(.3)
@@ -2943,6 +3484,7 @@ export default function Meeting() {
 
           100% {
             opacity: 0;
+
             transform:
               translate(
                 calc(-50% - 100px),
@@ -2956,6 +3498,7 @@ export default function Meeting() {
         @keyframes slipperThrow {
           0% {
             opacity: 0;
+
             transform:
               translate(-50%, 100px)
               rotate(-70deg)
@@ -2968,6 +3511,7 @@ export default function Meeting() {
 
           100% {
             opacity: 0;
+
             transform:
               translate(
                 calc(-50% + 180px),
@@ -2978,97 +3522,15 @@ export default function Meeting() {
           }
         }
 
-        .controls {
-          position: fixed;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          z-index: 60;
-
-          display: flex;
-          align-items: center;
-          justify-content: center;
-
-          gap: 7px;
-
-          padding:
-            8px 7px
-            calc(
-              8px +
-              env(safe-area-inset-bottom)
-            );
-
-          background:
-            rgba(0,0,0,.75);
-
-          backdrop-filter:
-            blur(18px);
-
-          border-top:
-            1px solid
-            rgba(255,255,255,.1);
-        }
-
-        .control {
-          width: 43px;
-          height: 43px;
-
-          border: 0;
-          border-radius: 50%;
-
-          color: white;
-
-          background:
-            rgba(255,255,255,.12);
-
-          font-size: 17px;
-          cursor: pointer;
-        }
-
-        .control.active {
-          background: #0f766e;
-        }
-
-        .join-button {
-          height: 46px;
-          padding: 0 31px;
-
-          border: 0;
-          border-radius: 23px;
-
-          color: white;
-          background: #0f766e;
-
-          font-weight: 900;
-          font-size: 12px;
-
-          cursor: pointer;
-
-          box-shadow:
-            0 8px 25px
-            rgba(15,118,110,.35);
-        }
-
-        .leave-button {
-          height: 43px;
-          padding: 0 16px;
-
-          border: 0;
-          border-radius: 22px;
-
-          color: white;
-          background: #dc2626;
-
-          font-weight: 900;
-          font-size: 11px;
-
-          cursor: pointer;
-        }
+        /* =========================
+           ACTIVE MEMBERS
+        ========================= */
 
         .active-overlay {
           position: fixed;
           inset: 0;
-          z-index: 100;
+
+          z-index: 200;
 
           display: flex;
           justify-content: flex-end;
@@ -3081,9 +3543,13 @@ export default function Meeting() {
         }
 
         .active-panel {
-          width: min(88%, 380px);
+          width:
+            min(88%, 380px);
+
           height: 100%;
+
           overflow-y: auto;
+
           padding: 16px;
 
           background: #101827;
@@ -3093,21 +3559,26 @@ export default function Meeting() {
             rgba(0,0,0,.4);
 
           animation:
-            activePanelIn .25s ease;
+            activePanelIn
+            .25s
+            ease;
         }
 
         @keyframes activePanelIn {
           from {
-            transform: translateX(100%);
+            transform:
+              translateX(100%);
           }
 
           to {
-            transform: translateX(0);
+            transform:
+              translateX(0);
           }
         }
 
         .active-header {
           display: flex;
+
           justify-content: space-between;
           align-items: center;
 
@@ -3127,6 +3598,7 @@ export default function Meeting() {
           height: 36px;
 
           border: 0;
+
           border-radius: 50%;
 
           color: white;
@@ -3139,7 +3611,9 @@ export default function Meeting() {
 
         .active-person {
           display: flex;
+
           align-items: center;
+
           gap: 10px;
 
           padding: 10px 2px;
@@ -3149,6 +3623,7 @@ export default function Meeting() {
             rgba(255,255,255,.06);
 
           cursor: pointer;
+
           border-radius: 9px;
         }
 
@@ -3162,6 +3637,7 @@ export default function Meeting() {
           height: 42px;
 
           object-fit: cover;
+
           border-radius: 50%;
 
           border:
@@ -3179,24 +3655,36 @@ export default function Meeting() {
 
         .active-person-info span {
           display: block;
+
           margin-top: 2px;
+
           font-size: 9px;
+
           color: #86efac;
         }
 
         .tag-hint {
           margin-top: 4px;
+
           font-size: 7px;
+
           color: #67e8f9;
+
           font-weight: 800;
         }
+
+        /* =========================
+           ENTRANCE
+        ========================= */
 
         .entrance-overlay {
           position: fixed;
           inset: 0;
-          z-index: 200;
+
+          z-index: 220;
 
           display: flex;
+
           align-items: center;
           justify-content: center;
 
@@ -3211,22 +3699,30 @@ export default function Meeting() {
             );
 
           animation:
-            entranceFade 3.5s ease forwards;
+            entranceFade
+            3.5s
+            ease
+            forwards;
         }
 
         .entrance-card {
           text-align: center;
 
           animation:
-            entranceZoom 3.5s ease forwards;
+            entranceZoom
+            3.5s
+            ease
+            forwards;
         }
 
         .entrance-icon {
           font-size: 50px;
+
           margin-bottom: -10px;
 
           animation:
-            entranceVehicle 1s
+            entranceVehicle
+            1s
             ease-in-out
             infinite
             alternate;
@@ -3234,7 +3730,8 @@ export default function Meeting() {
 
         .entrance-icon.admin {
           animation:
-            entranceHorse 1s
+            entranceHorse
+            1s
             ease-in-out
             infinite
             alternate;
@@ -3245,6 +3742,7 @@ export default function Meeting() {
           height: 125px;
 
           object-fit: cover;
+
           border-radius: 50%;
 
           border:
@@ -3253,7 +3751,6 @@ export default function Meeting() {
           box-shadow:
             0 0 0 8px
               rgba(255,255,255,.12),
-
             0 0 50px
               rgba(34,197,94,.65);
         }
@@ -3262,6 +3759,7 @@ export default function Meeting() {
           margin-top: 14px;
 
           font-size: 25px;
+
           font-weight: 900;
 
           text-shadow:
@@ -3273,6 +3771,7 @@ export default function Meeting() {
           margin-top: 5px;
 
           font-size: 12px;
+
           font-weight: 800;
 
           letter-spacing: 1px;
@@ -3353,35 +3852,47 @@ export default function Meeting() {
           }
         }
 
+        /* =========================
+           SMALL PHONES
+        ========================= */
+
         @media (max-width: 380px) {
 
           .meeting-content {
-            padding-left: 7px;
-            padding-right: 7px;
+            padding-left: 5px;
+            padding-right: 5px;
+            padding-bottom: 66px;
+          }
+
+          .meeting-header {
+            height: 49px;
+            min-height: 49px;
+            flex-basis: 49px;
           }
 
           .member-avatar {
-            width: 37px;
-            height: 37px;
+            width: 29px;
+            height: 29px;
           }
 
           .admin-avatar {
-            width: 45px;
-            height: 45px;
+            width: 32px;
+            height: 32px;
           }
 
           .admin-avatar-big {
-            width: 68px;
-            height: 68px;
+            width: 48px;
+            height: 48px;
           }
 
           .members-background-logo img {
-            width: 215px;
-            height: 215px;
+            width: 160px;
+            height: 160px;
           }
 
           .comments-list {
-            max-height: 130px;
+            height: 58px;
+            max-height: 58px;
           }
 
           .other-admins {
@@ -3389,23 +3900,123 @@ export default function Meeting() {
           }
 
           .comment {
-            font-size: 9px;
+            font-size: 7px;
           }
 
           .comment-avatar {
-            width: 22px;
-            height: 22px;
-            flex-basis: 22px;
+            width: 18px;
+            height: 18px;
+            flex-basis: 18px;
           }
 
           .control {
-            width: 40px;
-            height: 40px;
+            width: 37px;
+            height: 37px;
+            flex-basis: 37px;
+            font-size: 15px;
           }
 
           .leave-button {
-            height: 40px;
-            padding: 0 13px;
+            height: 37px;
+            padding: 0 10px;
+            font-size: 8px;
+          }
+
+          .fun-menu {
+            bottom:
+              calc(
+                58px +
+                env(safe-area-inset-bottom)
+              );
+
+            padding: 8px;
+          }
+
+          .fun-menu-button {
+            height: 35px;
+            font-size: 17px;
+          }
+        }
+
+        /* =========================
+           SHORT PHONE HEIGHT
+        ========================= */
+
+        @media (max-height: 680px) {
+
+          .meeting-content {
+            padding-top: 3px;
+            padding-bottom: 63px;
+          }
+
+          .room-heading {
+            margin-bottom: 2px;
+          }
+
+          .room-heading h2 {
+            font-size: 11px;
+            line-height: 13px;
+          }
+
+          .room-heading p {
+            font-size: 6px;
+            line-height: 7px;
+          }
+
+          .room-card {
+            padding: 4px;
+            border-radius: 10px;
+          }
+
+          .card-heading {
+            font-size: 7px;
+            margin-bottom: 2px;
+          }
+
+          .admin-avatar-big {
+            width: 45px;
+            height: 45px;
+          }
+
+          .admin-avatar {
+            width: 30px;
+            height: 30px;
+          }
+
+          .other-admins {
+            margin-top: 2px;
+          }
+
+          .members-card {
+            margin-top: 3px;
+          }
+
+          .comments-card {
+            margin-top: 3px;
+          }
+
+          .comments-list {
+            height: 48px;
+            max-height: 48px;
+          }
+
+          .message-input,
+          .send-button {
+            height: 27px;
+          }
+
+          .controls {
+            min-height: 55px;
+          }
+
+          .control {
+            width: 36px;
+            height: 36px;
+            flex-basis: 36px;
+          }
+
+          .leave-button {
+            height: 36px;
           }
         }
 
@@ -3419,7 +4030,8 @@ export default function Meeting() {
           .entrance-card,
           .entrance-overlay,
           .entrance-icon,
-          .fun-animation {
+          .fun-animation,
+          .fun-menu {
             animation: none;
           }
 
@@ -3427,7 +4039,9 @@ export default function Meeting() {
 
       `}</style>
 
-      {/* HEADER */}
+      {/* =========================
+          HEADER
+      ========================= */}
 
       <header className="meeting-header">
 
@@ -3469,7 +4083,9 @@ export default function Meeting() {
 
       </header>
 
-      {/* FUN ANIMATION LAYER */}
+      {/* =========================
+          FLOATING FUN ANIMATIONS
+      ========================= */}
 
       <div
         className="fun-animation-layer"
@@ -3488,7 +4104,9 @@ export default function Meeting() {
         )}
       </div>
 
-      {/* MAIN */}
+      {/* =========================
+          MAIN
+      ========================= */}
 
       <main className="meeting-content">
 
@@ -3511,7 +4129,9 @@ export default function Meeting() {
 
         </div>
 
-        {/* ADMINS */}
+        {/* =========================
+            ADMINISTRATION
+        ========================= */}
 
         <section className="room-card">
 
@@ -3596,7 +4216,9 @@ export default function Meeting() {
 
         </section>
 
-        {/* MEMBER SEATS */}
+        {/* =========================
+            MEMBER SEATS
+        ========================= */}
 
         <section className="room-card members-card">
 
@@ -3721,7 +4343,9 @@ export default function Meeting() {
 
         </section>
 
-        {/* ADMIN CONTROLS */}
+        {/* =========================
+            ADMIN CONTROLS
+        ========================= */}
 
         {isMeetingAdmin && (
 
@@ -3741,9 +4365,9 @@ export default function Meeting() {
 
             <div
               style={{
-                fontSize: 8,
+                fontSize: 6,
                 opacity: .7,
-                marginBottom: 5,
+                marginBottom: 3,
               }}
             >
               MEMBER SEAT CAPACITY
@@ -3787,7 +4411,7 @@ export default function Meeting() {
                 }
               >
                 {lockedMic
-                  ? "🔓 Unlock Mic"
+                  ? "🔓 Unlock"
                   : "🔇 Lock Mic"}
               </button>
 
@@ -3797,7 +4421,7 @@ export default function Meeting() {
                   removeCurrentMemberFromSeat
                 }
               >
-                ⬇️ Remove From Seat
+                ⬇️ Remove
               </button>
 
               <button
@@ -3847,7 +4471,7 @@ export default function Meeting() {
 
                 }}
               >
-                🪑 Assign Seat
+                🪑 Assign
               </button>
 
               <button
@@ -3856,7 +4480,7 @@ export default function Meeting() {
                   setShowActive(true)
                 }
               >
-                👥 View Active Members
+                👥 Active
               </button>
 
             </div>
@@ -3864,15 +4488,16 @@ export default function Meeting() {
             <p className="admin-tools-note">
               Removing a member from a seat
               does not remove the member from
-              the meeting. Members can continue
-              listening and commenting.
+              the meeting.
             </p>
 
           </section>
 
         )}
 
-        {/* COMMENTS */}
+        {/* =========================
+            COMMENTS
+        ========================= */}
 
         <section className="room-card comments-card">
 
@@ -4035,89 +4660,152 @@ export default function Meeting() {
 
         </section>
 
-        {/* FREE FUN ROOM */}
-
-        <section className="fun-room">
-
-          <div className="fun-title">
-
-            <span>
-              🎉 ROOM FUN
-            </span>
-
-            <span className="free-label">
-              FREE • NO MONEY
-            </span>
-
-          </div>
-
-          <div className="fun-buttons">
-
-            {REACTIONS.map(
-              (emoji) => (
-
-                <button
-                  key={emoji}
-                  className="fun-button"
-                  onClick={() =>
-                    sendReaction(emoji)
-                  }
-                  title={`Send ${emoji}`}
-                >
-                  {emoji}
-                </button>
-
-              )
-            )}
-
-            <button
-              className="fun-button"
-              onClick={throwSlipper}
-              title="Throw a slipper"
-            >
-              🩴
-            </button>
-
-            {GIFTS.slice(0, 4).map(
-              (gift) => (
-
-                <button
-                  key={gift.name}
-                  className="fun-button"
-                  onClick={() =>
-                    sendGift(gift)
-                  }
-                  title={`Send free ${gift.name}`}
-                >
-                  {gift.emoji}
-                </button>
-
-              )
-            )}
-
-            <button
-              className={`fun-button music-button ${
-                musicPlaying
-                  ? "active"
-                  : ""
-              }`}
-              onClick={() =>
-                toggleRoomMusic()
-              }
-              title="Free room music"
-            >
-              {musicPlaying
-                ? "⏸️ MUSIC"
-                : "🎵 MUSIC"}
-            </button>
-
-          </div>
-
-        </section>
-
       </main>
 
-      {/* BOTTOM CONTROLS */}
+      {/* =========================
+          FUN MENU POPUP
+      ========================= */}
+
+      {showFunMenu && (
+
+        <div
+          className="fun-menu-overlay"
+          onClick={() =>
+            setShowFunMenu(false)
+          }
+        >
+
+          <div
+            className="fun-menu"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+
+            <div className="fun-menu-header">
+
+              <div>
+
+                <div className="fun-menu-title">
+                  🎉 ROOM FUN
+                </div>
+
+                <div className="fun-menu-free">
+                  FREE • NO MONEY
+                </div>
+
+              </div>
+
+              <button
+                className="fun-menu-close"
+                onClick={() =>
+                  setShowFunMenu(false)
+                }
+              >
+                ✕
+              </button>
+
+            </div>
+
+            <div className="fun-menu-section-title">
+              REACTIONS
+            </div>
+
+            <div className="fun-menu-grid">
+
+              {REACTIONS.map(
+                (emoji) => (
+
+                  <button
+                    key={emoji}
+                    className="fun-menu-button"
+                    onClick={() =>
+                      sendReaction(emoji)
+                    }
+                    title={`Send ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+
+                )
+              )}
+
+            </div>
+
+            <div className="fun-menu-section-title">
+              FUN
+            </div>
+
+            <div className="fun-menu-grid">
+
+              <button
+                className="fun-menu-button"
+                onClick={throwSlipper}
+                title="Throw slipper"
+              >
+                🩴
+              </button>
+
+              {GIFTS.map(
+                (gift) => (
+
+                  <button
+                    key={gift.name}
+                    className="fun-menu-button"
+                    onClick={() =>
+                      sendGift(gift)
+                    }
+                    title={`Send free ${gift.name}`}
+                  >
+                    {gift.emoji}
+                  </button>
+
+                )
+              )}
+
+            </div>
+
+            <div className="fun-menu-section-title">
+              MUSIC
+            </div>
+
+            <div className="fun-menu-bottom">
+
+              <button
+                className={`fun-menu-action ${
+                  musicPlaying
+                    ? "music-active"
+                    : ""
+                }`}
+                onClick={() =>
+                  toggleRoomMusic()
+                }
+              >
+                {musicPlaying
+                  ? "⏸️ STOP MUSIC"
+                  : "🎵 PLAY MUSIC"}
+              </button>
+
+              <button
+                className="fun-menu-action"
+                onClick={() =>
+                  setShowFunMenu(false)
+                }
+              >
+                ✓ CLOSE
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+      {/* =========================
+          BOTTOM CONTROLS
+      ========================= */}
 
       <footer className="controls">
 
@@ -4141,6 +4829,8 @@ export default function Meeting() {
 
           <>
 
+            {/* MIC */}
+
             <button
               className={`control ${
                 !muted &&
@@ -4159,6 +4849,8 @@ export default function Meeting() {
                 ? "🔇"
                 : "🎙️"}
             </button>
+
+            {/* SEAT */}
 
             <button
               className={`control ${
@@ -4233,36 +4925,58 @@ export default function Meeting() {
               🪑
             </button>
 
+            {/* COMMENTS */}
+
             <button
               className="control"
               onClick={() => {
 
-                document
-                  .querySelector(
-                    ".comments-card"
-                  )
-                  ?.scrollIntoView({
+                const list =
+                  commentsListRef.current;
+
+                if (list) {
+                  list.scrollTo({
+                    top:
+                      list.scrollHeight,
                     behavior:
                       "smooth",
                   });
+                }
+
+                messageInputRef.current?.focus();
 
               }}
             >
               💬
             </button>
 
+            {/* FUN */}
+
             <button
-              className={`control ${
-                musicPlaying
-                  ? "active"
+              className={`control fun-main-button ${
+                showFunMenu
+                  ? "open"
                   : ""
               }`}
               onClick={() =>
-                toggleRoomMusic()
+                setShowFunMenu(
+                  (old) => !old
+                )
               }
+              aria-label="Open room fun"
+              title="Room Fun"
             >
-              🎵
+              🎉
+
+              {!showFunMenu && (
+                <span className="fun-badge">
+                  +
+                </span>
+              )}
+
             </button>
+
+            {/* ACTIVE MEMBERS */}
 
             <button
               className="control"
@@ -4272,6 +4986,8 @@ export default function Meeting() {
             >
               👥
             </button>
+
+            {/* LEAVE */}
 
             <button
               className="leave-button"
@@ -4288,7 +5004,9 @@ export default function Meeting() {
 
       </footer>
 
-      {/* ACTIVE MEMBERS */}
+      {/* =========================
+          ACTIVE MEMBERS
+      ========================= */}
 
       {showActive && (
 
@@ -4445,7 +5163,9 @@ export default function Meeting() {
 
       )}
 
-      {/* ENTRANCE */}
+      {/* =========================
+          ENTRANCE
+      ========================= */}
 
       {entrance && (
 
