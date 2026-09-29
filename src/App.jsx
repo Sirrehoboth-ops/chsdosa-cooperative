@@ -6,6 +6,7 @@ import Dashboard from "./pages/Dashboard";
 import Deposit from "./pages/Deposit";
 import Transactions from "./pages/Transactions";
 import Meeting from "./pages/Meeting";
+import AdminLogin from "./pages/AdminLogin";
 
 function Welcome() {
   const navigate = useNavigate();
@@ -521,6 +522,12 @@ function App() {
         <Route
           path="/login"
           element={<Login />}
+        />
+
+        {/* GENERAL ADMINISTRATION */}
+        <Route
+          path="/admin-login"
+          element={<AdminLogin />}
         />
 
         <Route

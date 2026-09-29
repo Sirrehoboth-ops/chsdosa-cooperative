@@ -44,64 +44,52 @@ const LIVE_THEMES = [
 ];
 
 function makeAvatar(name) {
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(
-    name || "CHSDOSA"
-  )}&background=0f766e&color=fff&bold=true`;
+  const safeName = name || "CHSDOSA";
+  const encodedName = encodeURIComponent(safeName);
+
+  return (
+    "https://ui-avatars.com/api/?name=" +
+    encodedName +
+    "&background=0f766e&color=fff&bold=true"
+  );
 }
 
 export default function Meeting() {
   const navigate = useNavigate();
 
-  /* =========================
-     LIVEKIT
-  ========================= */
-
   const liveKitRoomRef = useRef(null);
   const audioContainerRef = useRef(null);
+  const commentsListRef = useRef(null);
+  const messageInputRef = useRef(null);
 
-  /* =========================
-     MEMBER
-  ========================= */
+  const reconnectingAfterRefreshRef = useRef(false);
+
+  const seatAssignmentsRef = useRef({});
+  const seatCapacityRef = useRef(20);
+  const processedChatIdsRef = useRef(new Set());
 
   const [member, setMember] = useState(null);
   const [loadingMember, setLoadingMember] = useState(true);
 
-  /* =========================
-     ADMIN ACCESS
-  ========================= */
-
   const [adminUser, setAdminUser] = useState(null);
-
-  /* =========================
-     MEETING STATE
-  ========================= */
 
   const [joined, setJoined] = useState(false);
   const [muted, setMuted] = useState(true);
   const [selectedSeat, setSelectedSeat] = useState(null);
 
   const [seatCapacity, setSeatCapacity] = useState(20);
+  const [seatAssignments, setSeatAssignments] = useState({});
 
   const [showActive, setShowActive] = useState(false);
-
   const [message, setMessage] = useState("");
-  const [connectionStatus, setConnectionStatus] =
-    useState("");
+
+  const [connectionStatus, setConnectionStatus] = useState("");
 
   const [entrance, setEntrance] = useState(null);
 
   const [lockedMic, setLockedMic] = useState(false);
 
-  /* =========================
-     SPEAKING PEOPLE
-  ========================= */
-
-  const [speakingIds, setSpeakingIds] =
-    useState([]);
-
-  /* =========================
-     COMMENTS
-  ========================= */
+  const [speakingIds, setSpeakingIds] = useState([]);
 
   const [comments, setComments] = useState([
     {
@@ -110,29 +98,15 @@ export default function Meeting() {
       name: "Secretary",
       avatar: makeAvatar("Secretary"),
       text: "Good evening everyone.",
+      taggedMemberId: null,
     },
   ]);
 
-  /* =========================
-     ACTIVE PEOPLE
-  ========================= */
-
-  const [activeMembers, setActiveMembers] =
-    useState([]);
-
-  /* =========================
-     SMOOTH BACKGROUND
-  ========================= */
+  const [activeMembers, setActiveMembers] = useState([]);
 
   const [themeIndex, setThemeIndex] = useState(0);
-  const [nextThemeIndex, setNextThemeIndex] =
-    useState(1);
-  const [themeFading, setThemeFading] =
-    useState(false);
-
-  /* =========================
-     CURRENT USER
-  ========================= */
+  const [nextThemeIndex, setNextThemeIndex] = useState(1);
+  const [themeFading, setThemeFading] = useState(false);
 
   const currentUser = useMemo(() => {
     const name =
@@ -157,6 +131,14 @@ export default function Meeting() {
     };
   }, [member]);
 
+  useEffect(() => {
+    seatAssignmentsRef.current = seatAssignments;
+  }, [seatAssignments]);
+
+  useEffect(() => {
+    seatCapacityRef.current = seatCapacity;
+  }, [seatCapacity]);
+
   /* =========================
      LOAD MEMBER
   ========================= */
@@ -173,9 +155,7 @@ export default function Meeting() {
         } = await supabase.auth.getUser();
 
         if (!user) {
-          if (mounted) {
-            setLoadingMember(false);
-          }
+          if (mounted) setLoadingMember(false);
           return;
         }
 
@@ -186,10 +166,7 @@ export default function Meeting() {
           .maybeSingle();
 
         if (error) {
-          console.error(
-            "Member loading error:",
-            error
-          );
+          console.error("Member loading error:", error);
         }
 
         if (mounted) {
@@ -217,10 +194,7 @@ export default function Meeting() {
           setAdminUser(adminData || null);
         }
       } catch (error) {
-        console.error(
-          "Meeting member error:",
-          error
-        );
+        console.error("Meeting member error:", error);
       } finally {
         if (mounted) {
           setLoadingMember(false);
@@ -237,18 +211,10 @@ export default function Meeting() {
 
   const isMeetingAdmin = Boolean(adminUser);
 
-  /* =========================
-     ADMIN DATA
-  ========================= */
-
   const admins = ADMIN_DEFAULTS.map((admin) => ({
     ...admin,
     avatar: makeAvatar(admin.name),
   }));
-
-  /* =========================
-     MEMBER SEATS
-  ========================= */
 
   const memberSeats = Array.from(
     { length: seatCapacity },
@@ -281,17 +247,11 @@ export default function Meeting() {
 
         setThemeFading(false);
 
-        nextTimer = setTimeout(
-          startFade,
-          7000
-        );
+        nextTimer = setTimeout(startFade, 7000);
       }, 2500);
     };
 
-    nextTimer = setTimeout(
-      startFade,
-      7000
-    );
+    nextTimer = setTimeout(startFade, 7000);
 
     return () => {
       clearTimeout(fadeTimer);
@@ -300,7 +260,24 @@ export default function Meeting() {
   }, [themeIndex]);
 
   /* =========================
-     REMOVE AUDIO ELEMENTS
+     COMMENTS AUTO SCROLL
+  ========================= */
+
+  useEffect(() => {
+    const container = commentsListRef.current;
+
+    if (!container) return;
+
+    requestAnimationFrame(() => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  }, [comments]);
+
+  /* =========================
+     REMOVE AUDIO
   ========================= */
 
   const removeAudioTrack = (track) => {
@@ -311,15 +288,12 @@ export default function Meeting() {
         element.remove();
       });
     } catch (error) {
-      console.log(
-        "Audio detach error:",
-        error
-      );
+      console.log("Audio detach error:", error);
     }
   };
 
   /* =========================
-     ADD REMOTE AUDIO
+     ATTACH AUDIO
   ========================= */
 
   const attachAudioTrack = (track) => {
@@ -334,14 +308,9 @@ export default function Meeting() {
       const element = track.attach();
 
       element.autoplay = true;
-      element.setAttribute(
-        "aria-hidden",
-        "true"
-      );
+      element.setAttribute("aria-hidden", "true");
 
-      audioContainerRef.current.appendChild(
-        element
-      );
+      audioContainerRef.current.appendChild(element);
     } catch (error) {
       console.error(
         "Unable to attach remote audio:",
@@ -351,31 +320,73 @@ export default function Meeting() {
   };
 
   /* =========================
-     LIVEKIT PARTICIPANT HELPERS
+     PARTICIPANT HELPERS
+     SHARED MEMBER PROFILE
   ========================= */
 
-  const participantToMember = (
-    participant
-  ) => {
+  const participantToMember = (participant) => {
+    let profile = {};
+
+    try {
+      if (participant?.metadata) {
+        profile = JSON.parse(
+          participant.metadata
+        );
+      }
+    } catch (error) {
+      console.log(
+        "Participant profile metadata error:",
+        error
+      );
+    }
+
     const name =
-      participant.name ||
-      participant.identity ||
+      profile?.name ||
+      participant?.name ||
+      participant?.identity ||
       "Member";
 
+    const avatar =
+      profile?.avatar ||
+      profile?.avatar_url ||
+      makeAvatar(name);
+
     return {
-      id: participant.identity,
+      id:
+        profile?.id ||
+        participant?.identity ||
+        `member-${Date.now()}`,
       name,
-      avatar: makeAvatar(name),
+      avatar,
+      memberNumber:
+        profile?.memberNumber ||
+        profile?.member_number ||
+        "",
+    };
+  };
+
+  const buildSeatPerson = (
+    person = currentUser
+  ) => {
+    return {
+      id: person.id,
+      name: person.name,
+      avatar:
+        person.avatar ||
+        person.avatar_url ||
+        makeAvatar(person.name),
+      memberNumber:
+        person.memberNumber ||
+        person.member_number ||
+        "",
     };
   };
 
   /* =========================
-     SEND LIVE CHAT DATA
+     PUBLISH SEAT EVENT
   ========================= */
 
-  const publishChatMessage = async (
-    text
-  ) => {
+  const publishSeatEvent = async (event) => {
     const room = liveKitRoomRef.current;
 
     if (!room) return;
@@ -383,10 +394,58 @@ export default function Meeting() {
     try {
       const payload = new TextEncoder().encode(
         JSON.stringify({
+          ...event,
+          sender_id: currentUser.id,
+        })
+      );
+
+      await room.localParticipant.publishData(
+        payload,
+        {
+          reliable: true,
+          topic: "chsdosa-seats",
+        }
+      );
+    } catch (error) {
+      console.error(
+        "Seat event publish error:",
+        error
+      );
+    }
+  };
+
+  /* =========================
+     PUBLISH CHAT
+  ========================= */
+
+  const publishChatMessage = async (
+    text,
+    taggedMemberId = null
+  ) => {
+    const room = liveKitRoomRef.current;
+
+    if (!room) return;
+
+    try {
+      const clientMessageId =
+        `${currentUser.id}-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2)}`;
+
+      processedChatIdsRef.current.add(
+        clientMessageId
+      );
+
+      const payload = new TextEncoder().encode(
+        JSON.stringify({
           type: "chat",
+          client_message_id:
+            clientMessageId,
           text,
           name: currentUser.name,
           avatar: currentUser.avatar,
+          sender_id: currentUser.id,
+          taggedMemberId,
         })
       );
 
@@ -406,16 +465,21 @@ export default function Meeting() {
   };
 
   /* =========================
-     JOIN LIVEKIT MEETING
+     JOIN MEETING
   ========================= */
 
-  const joinMeeting = async () => {
+  const joinMeeting = async (
+    isAutomaticReconnect = false
+  ) => {
     if (joined) return;
 
     if (!member?.id) {
-      alert(
-        "Your member account could not be found."
-      );
+      if (!isAutomaticReconnect) {
+        alert(
+          "Your member account could not be found."
+        );
+      }
+
       return;
     }
 
@@ -423,7 +487,9 @@ export default function Meeting() {
 
     try {
       setConnectionStatus(
-        "Connecting to meeting..."
+        isAutomaticReconnect
+          ? "Reconnecting to meeting..."
+          : "Connecting to meeting..."
       );
 
       const { data, error } =
@@ -441,11 +507,6 @@ export default function Meeting() {
         );
 
       if (error) {
-        console.error(
-          "LiveKit token error:",
-          error
-        );
-
         throw new Error(
           error.message ||
             "Unable to connect to meeting."
@@ -466,10 +527,6 @@ export default function Meeting() {
 
       liveKitRoomRef.current = room;
 
-      /* =========================
-         REMOTE AUDIO
-      ========================= */
-
       room.on(
         RoomEvent.TrackSubscribed,
         (
@@ -478,8 +535,7 @@ export default function Meeting() {
           participant
         ) => {
           if (
-            track.kind ===
-            Track.Kind.Audio
+            track.kind === Track.Kind.Audio
           ) {
             attachAudioTrack(track);
           }
@@ -495,7 +551,16 @@ export default function Meeting() {
                 item.id === person.id
             );
 
-            if (exists) return old;
+            if (exists) {
+              return old.map((item) =>
+                item.id === person.id
+                  ? {
+                      ...item,
+                      ...person,
+                    }
+                  : item
+              );
+            }
 
             return [...old, person];
           });
@@ -508,10 +573,6 @@ export default function Meeting() {
           removeAudioTrack(track);
         }
       );
-
-      /* =========================
-         PARTICIPANT JOINED
-      ========================= */
 
       room.on(
         RoomEvent.ParticipantConnected,
@@ -527,7 +588,16 @@ export default function Meeting() {
                 item.id === person.id
             );
 
-            if (exists) return old;
+            if (exists) {
+              return old.map((item) =>
+                item.id === person.id
+                  ? {
+                      ...item,
+                      ...person,
+                    }
+                  : item
+              );
+            }
 
             return [...old, person];
           });
@@ -540,6 +610,7 @@ export default function Meeting() {
               name: person.name,
               avatar: person.avatar,
               text: "joined the meeting",
+              taggedMemberId: null,
             },
           ]);
 
@@ -556,8 +627,98 @@ export default function Meeting() {
       );
 
       /* =========================
-         PARTICIPANT LEFT
+         MEMBER PROFILE CHANGED
       ========================= */
+
+      room.on(
+        RoomEvent.ParticipantMetadataChanged,
+        (metadata, participant) => {
+          const person =
+            participantToMember(
+              participant
+            );
+
+          setActiveMembers((old) =>
+            old.map((item) =>
+              item.id === person.id
+                ? {
+                    ...item,
+                    ...person,
+                  }
+                : item
+            )
+          );
+
+          setSeatAssignments((old) => {
+            const next = { ...old };
+
+            Object.keys(next).forEach(
+              (seatId) => {
+                if (
+                  next[seatId]?.id ===
+                  person.id
+                ) {
+                  next[seatId] = {
+                    ...next[seatId],
+                    ...person,
+                  };
+                }
+              }
+            );
+
+            return next;
+          });
+        }
+      );
+
+      /* =========================
+         MEMBER NAME CHANGED
+      ========================= */
+
+      room.on(
+        RoomEvent.ParticipantNameChanged,
+        (name, participant) => {
+          const person =
+            participantToMember(
+              participant
+            );
+
+          const updatedName =
+            name ||
+            person.name;
+
+          setActiveMembers((old) =>
+            old.map((item) =>
+              item.id === person.id
+                ? {
+                    ...item,
+                    name: updatedName,
+                  }
+                : item
+            )
+          );
+
+          setSeatAssignments((old) => {
+            const next = { ...old };
+
+            Object.keys(next).forEach(
+              (seatId) => {
+                if (
+                  next[seatId]?.id ===
+                  person.id
+                ) {
+                  next[seatId] = {
+                    ...next[seatId],
+                    name: updatedName,
+                  };
+                }
+              }
+            );
+
+            return next;
+          });
+        }
+      );
 
       room.on(
         RoomEvent.ParticipantDisconnected,
@@ -573,21 +734,28 @@ export default function Meeting() {
           setSpeakingIds((old) =>
             old.filter(
               (id) =>
-                id !==
-                participant.identity
+                id !== participant.identity
             )
           );
 
-          /*
-            No "left the meeting"
-            comment is created.
-          */
+          setSeatAssignments((old) => {
+            const next = { ...old };
+
+            Object.keys(next).forEach(
+              (seatId) => {
+                if (
+                  next[seatId]?.id ===
+                  participant.identity
+                ) {
+                  delete next[seatId];
+                }
+              }
+            );
+
+            return next;
+          });
         }
       );
-
-      /* =========================
-         ACTIVE SPEAKERS
-      ========================= */
 
       room.on(
         RoomEvent.ActiveSpeakersChanged,
@@ -602,7 +770,7 @@ export default function Meeting() {
       );
 
       /* =========================
-         LIVE CHAT
+         LIVE DATA
       ========================= */
 
       room.on(
@@ -613,61 +781,274 @@ export default function Meeting() {
           kind,
           topic
         ) => {
-          if (
-            topic &&
-            topic !== "chsdosa-chat"
-          ) {
-            return;
-          }
-
           try {
             const decoded =
               new TextDecoder().decode(
                 payload
               );
 
-            const data =
-              JSON.parse(decoded);
+            const data = JSON.parse(decoded);
+
+            /* =========================
+               CHAT
+            ========================= */
 
             if (
-              data?.type !== "chat" ||
-              !data.text
+              topic ===
+              "chsdosa-chat"
             ) {
+              if (
+                data?.type !== "chat" ||
+                !data.text
+              ) {
+                return;
+              }
+
+              const messageId =
+                data.client_message_id;
+
+              if (
+                messageId &&
+                processedChatIdsRef.current.has(
+                  messageId
+                )
+              ) {
+                return;
+              }
+
+              if (messageId) {
+                processedChatIdsRef.current.add(
+                  messageId
+                );
+              }
+
+              if (
+                data.sender_id &&
+                data.sender_id ===
+                  currentUser.id
+              ) {
+                return;
+              }
+
+              setComments((old) => [
+                ...old,
+                {
+                  id:
+                    messageId ||
+                    `remote-message-${Date.now()}-${Math.random()}`,
+                  type: "message",
+                  name:
+                    data.name ||
+                    participant?.name ||
+                    participant?.identity ||
+                    "Member",
+                  avatar:
+                    data.avatar ||
+                    makeAvatar(
+                      data.name ||
+                        participant?.name ||
+                        "Member"
+                    ),
+                  text: data.text,
+                  taggedMemberId:
+                    data.taggedMemberId ||
+                    null,
+                },
+              ]);
+
               return;
             }
 
-            setComments((old) => [
-              ...old,
-              {
-                id: `remote-message-${Date.now()}-${Math.random()}`,
-                type: "message",
-                name:
-                  data.name ||
-                  participant?.name ||
-                  participant?.identity ||
-                  "Member",
-                avatar:
-                  data.avatar ||
-                  makeAvatar(
-                    data.name ||
-                      participant?.name ||
-                      "Member"
-                  ),
-                text: data.text,
-              },
-            ]);
+            /* =========================
+               SEATS
+            ========================= */
+
+            if (
+              topic ===
+              "chsdosa-seats"
+            ) {
+              if (
+                data?.type ===
+                "seat-request"
+              ) {
+                publishSeatEvent({
+                  type: "seat-state",
+                  assignments:
+                    seatAssignmentsRef.current,
+                });
+
+                return;
+              }
+
+              if (
+                data?.type ===
+                "seat-state"
+              ) {
+                if (
+                  data.assignments &&
+                  typeof data.assignments ===
+                    "object"
+                ) {
+                  setSeatAssignments(
+                    (old) => {
+                      const next = {
+                        ...old,
+                      };
+
+                      Object.entries(
+                        data.assignments
+                      ).forEach(
+                        ([
+                          seatId,
+                          person,
+                        ]) => {
+                          if (
+                            person?.id
+                          ) {
+                            next[
+                              seatId
+                            ] = person;
+                          }
+                        }
+                      );
+
+                      return next;
+                    }
+                  );
+                }
+
+                return;
+              }
+
+              if (
+                data?.type ===
+                "seat-update"
+              ) {
+                if (!data.seat_id) {
+                  return;
+                }
+
+                setSeatAssignments(
+                  (old) => {
+                    const next = {
+                      ...old,
+                    };
+
+                    if (
+                      data.action ===
+                      "leave"
+                    ) {
+                      if (
+                        next[
+                          data.seat_id
+                        ]?.id ===
+                          data.person
+                            ?.id ||
+                        data.person?.id ===
+                          currentUser.id
+                      ) {
+                        delete next[
+                          data.seat_id
+                        ];
+                      }
+                    } else if (
+                      data.person?.id
+                    ) {
+                      Object.keys(
+                        next
+                      ).forEach(
+                        (seatId) => {
+                          if (
+                            next[
+                              seatId
+                            ]?.id ===
+                              data.person.id &&
+                            seatId !==
+                              data.seat_id
+                          ) {
+                            delete next[
+                              seatId
+                            ];
+                          }
+                        }
+                      );
+
+                      next[
+                        data.seat_id
+                      ] = data.person;
+                    }
+
+                    return next;
+                  }
+                );
+
+                return;
+              }
+
+              if (
+                data?.type ===
+                "seat-clear"
+              ) {
+                if (!data.person_id) {
+                  return;
+                }
+
+                setSeatAssignments(
+                  (old) => {
+                    const next = {
+                      ...old,
+                    };
+
+                    Object.keys(
+                      next
+                    ).forEach(
+                      (seatId) => {
+                        if (
+                          next[
+                            seatId
+                          ]?.id ===
+                          data.person_id
+                        ) {
+                          delete next[
+                            seatId
+                          ];
+                        }
+                      }
+                    );
+
+                    return next;
+                  }
+                );
+
+                return;
+              }
+
+              if (
+                data?.type ===
+                "capacity-update"
+              ) {
+                const amount =
+                  Number(data.amount);
+
+                if (
+                  [6, 10, 15, 20].includes(
+                    amount
+                  )
+                ) {
+                  setSeatCapacity(amount);
+                }
+
+                return;
+              }
+            }
           } catch (error) {
             console.error(
-              "Chat data error:",
+              "Live data error:",
               error
             );
           }
         }
       );
-
-      /* =========================
-         DISCONNECTED
-      ========================= */
 
       room.on(
         RoomEvent.Disconnected,
@@ -676,18 +1057,11 @@ export default function Meeting() {
           setMuted(true);
           setSelectedSeat(null);
           setSpeakingIds([]);
-          setConnectionStatus(
-            ""
-          );
+          setConnectionStatus("");
 
-          liveKitRoomRef.current =
-            null;
+          liveKitRoomRef.current = null;
         }
       );
-
-      /* =========================
-         CONNECT
-      ========================= */
 
       await room.connect(
         data.server_url,
@@ -697,19 +1071,35 @@ export default function Meeting() {
         }
       );
 
-      /*
-        Make sure the microphone starts OFF.
-        The member must deliberately press
-        the microphone button to speak.
-      */
+      /* =========================
+         PUBLISH CURRENT MEMBER PROFILE
+      ========================= */
 
-      await room.localParticipant
-        .setMicrophoneEnabled(false);
+      try {
+        await room.localParticipant.setName(
+          currentUser.name
+        );
 
-      /*
-        Start remote audio after the
-        user's JOIN button interaction.
-      */
+        await room.localParticipant.setMetadata(
+          JSON.stringify({
+            id: currentUser.id,
+            name: currentUser.name,
+            avatar: currentUser.avatar,
+            memberNumber:
+              currentUser.memberNumber ||
+              "",
+          })
+        );
+      } catch (profileError) {
+        console.error(
+          "Unable to publish member profile:",
+          profileError
+        );
+      }
+
+      await room.localParticipant.setMicrophoneEnabled(
+        false
+      );
 
       try {
         await room.startAudio();
@@ -720,13 +1110,14 @@ export default function Meeting() {
         );
       }
 
-      /* =========================
-         ADD CURRENT USER
-      ========================= */
-
       setJoined(true);
       setMuted(true);
       setConnectionStatus("");
+
+      sessionStorage.setItem(
+        "chsdosa-meeting-joined",
+        "true"
+      );
 
       setActiveMembers((old) => {
         const exists = old.some(
@@ -734,41 +1125,45 @@ export default function Meeting() {
             person.id === currentUser.id
         );
 
-        if (exists) return old;
+        if (exists) {
+          return old.map((person) =>
+            person.id === currentUser.id
+              ? {
+                  ...person,
+                  ...currentUser,
+                }
+              : person
+          );
+        }
 
-        return [
-          ...old,
-          currentUser,
-        ];
+        return [...old, currentUser];
       });
 
-      setComments((old) => [
-        ...old,
-        {
-          id: `join-${currentUser.id}-${Date.now()}`,
-          type: "join",
+      if (!isAutomaticReconnect) {
+        setComments((old) => [
+          ...old,
+          {
+            id: `join-${currentUser.id}-${Date.now()}`,
+            type: "join",
+            name: currentUser.name,
+            avatar: currentUser.avatar,
+            text: "joined the meeting",
+            taggedMemberId: null,
+          },
+        ]);
+
+        setEntrance({
           name: currentUser.name,
           avatar: currentUser.avatar,
-          text: "joined the meeting",
-        },
-      ]);
+          type: isMeetingAdmin
+            ? "admin"
+            : "member",
+        });
 
-      setEntrance({
-        name: currentUser.name,
-        avatar: currentUser.avatar,
-        type: isMeetingAdmin
-          ? "admin"
-          : "member",
-      });
-
-      window.setTimeout(() => {
-        setEntrance(null);
-      }, 3500);
-
-      /*
-        Add participants that were already
-        inside the room before this member joined.
-      */
+        window.setTimeout(() => {
+          setEntrance(null);
+        }, 3500);
+      }
 
       room.remoteParticipants.forEach(
         (participant) => {
@@ -783,7 +1178,16 @@ export default function Meeting() {
                 item.id === person.id
             );
 
-            if (exists) return old;
+            if (exists) {
+              return old.map((item) =>
+                item.id === person.id
+                  ? {
+                      ...item,
+                      ...person,
+                    }
+                  : item
+              );
+            }
 
             return [
               ...old,
@@ -792,6 +1196,14 @@ export default function Meeting() {
           });
         }
       );
+
+      window.setTimeout(() => {
+        publishSeatEvent({
+          type: "seat-request",
+          requester_id:
+            currentUser.id,
+        });
+      }, 600);
     } catch (error) {
       console.error(
         "Meeting connection error:",
@@ -816,20 +1228,67 @@ export default function Meeting() {
       setSelectedSeat(null);
       setConnectionStatus("");
 
-      alert(
-        error?.message ||
-          "Unable to join the meeting. Please try again."
-      );
+      if (!isAutomaticReconnect) {
+        alert(
+          error?.message ||
+            "Unable to join the meeting. Please try again."
+        );
+      }
     }
   };
 
   /* =========================
-     LEAVE LIVEKIT MEETING
+     AUTO RECONNECT
+  ========================= */
+
+  useEffect(() => {
+    if (
+      loadingMember ||
+      !member?.id ||
+      reconnectingAfterRefreshRef.current
+    ) {
+      return;
+    }
+
+    const shouldReconnect =
+      sessionStorage.getItem(
+        "chsdosa-meeting-joined"
+      ) === "true";
+
+    if (!shouldReconnect) {
+      return;
+    }
+
+    reconnectingAfterRefreshRef.current =
+      true;
+
+    const timer = setTimeout(() => {
+      joinMeeting(true);
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [loadingMember, member]);
+
+  /* =========================
+     LEAVE
   ========================= */
 
   const leaveMeeting = async () => {
+    sessionStorage.removeItem(
+      "chsdosa-meeting-joined"
+    );
+
     const room =
       liveKitRoomRef.current;
+
+    if (selectedSeat) {
+      await publishSeatEvent({
+        type: "seat-clear",
+        person_id: currentUser.id,
+      });
+    }
 
     try {
       if (room) {
@@ -854,13 +1313,27 @@ export default function Meeting() {
     setActiveMembers((old) =>
       old.filter(
         (person) =>
-          person.id !== currentUser.id
+          person.id !==
+          currentUser.id
       )
     );
 
-    /*
-      No "left the meeting" comment.
-    */
+    setSeatAssignments((old) => {
+      const next = { ...old };
+
+      Object.keys(next).forEach(
+        (seatId) => {
+          if (
+            next[seatId]?.id ===
+            currentUser.id
+          ) {
+            delete next[seatId];
+          }
+        }
+      );
+
+      return next;
+    });
   };
 
   /* =========================
@@ -874,10 +1347,66 @@ export default function Meeting() {
 
       if (room) {
         room.disconnect();
-        liveKitRoomRef.current = null;
+        liveKitRoomRef.current =
+          null;
       }
     };
   }, []);
+
+  /* =========================
+     TAG MEMBER
+  ========================= */
+
+  const tagMember = (person) => {
+    if (!person?.name || !joined) return;
+
+    const tag = `@${person.name} `;
+
+    setMessage((oldMessage) => {
+      const currentText =
+        oldMessage || "";
+
+      const existingTag =
+        `@${person.name}`;
+
+      if (
+        currentText
+          .toLowerCase()
+          .includes(
+            existingTag.toLowerCase()
+          )
+      ) {
+        return currentText;
+      }
+
+      if (
+        currentText.trim().length === 0
+      ) {
+        return tag;
+      }
+
+      return `${currentText.trimEnd()} ${tag}`;
+    });
+
+    setShowActive(false);
+
+    window.setTimeout(() => {
+      messageInputRef.current?.focus();
+
+      const input =
+        messageInputRef.current;
+
+      if (input) {
+        const length =
+          input.value.length;
+
+        input.setSelectionRange(
+          length,
+          length
+        );
+      }
+    }, 100);
+  };
 
   /* =========================
      COMMENT
@@ -886,37 +1415,93 @@ export default function Meeting() {
   const sendMessage = async () => {
     const text = message.trim();
 
-    if (!text || !joined) return;
+    if (!text || !joined) {
+      return;
+    }
+
+    let taggedMemberId = null;
+
+    const firstTagMatch =
+      text.match(
+        /^@(.+?)\s/
+      );
+
+    if (firstTagMatch) {
+      const taggedName =
+        firstTagMatch[1]
+          .trim()
+          .toLowerCase();
+
+      const taggedPerson =
+        [...activeMembers, ...admins].find(
+          (person) =>
+            person.name
+              .trim()
+              .toLowerCase() ===
+            taggedName
+        );
+
+      if (taggedPerson) {
+        taggedMemberId =
+          taggedPerson.id;
+      }
+    }
+
+    const localMessage = {
+      id: `message-${Date.now()}-${Math.random()}`,
+      type: "message",
+      name: currentUser.name,
+      avatar: currentUser.avatar,
+      text,
+      taggedMemberId,
+    };
 
     setComments((old) => [
       ...old,
-      {
-        id: `message-${Date.now()}`,
-        type: "message",
-        name: currentUser.name,
-        avatar: currentUser.avatar,
-        text,
-      },
+      localMessage,
     ]);
 
     setMessage("");
 
-    await publishChatMessage(text);
+    await publishChatMessage(
+      text,
+      taggedMemberId
+    );
   };
 
   /* =========================
      SEAT
   ========================= */
 
-  const chooseSeat = (seatId) => {
+  const chooseSeat = async (seatId) => {
     if (!joined) {
       alert(
         "Please join the meeting first."
       );
+
       return;
     }
 
-    if (selectedSeat === seatId) {
+    const existingPerson =
+      seatAssignments[seatId];
+
+    if (
+      existingPerson &&
+      existingPerson.id !==
+        currentUser.id
+    ) {
+      alert(
+        `${existingPerson.name} is already sitting in this seat.`
+      );
+
+      return;
+    }
+
+    if (
+      selectedSeat === seatId ||
+      existingPerson?.id ===
+        currentUser.id
+    ) {
       setSelectedSeat(null);
       setMuted(true);
 
@@ -934,8 +1519,51 @@ export default function Meeting() {
           );
       }
 
+      setSeatAssignments((old) => {
+        const next = { ...old };
+        delete next[seatId];
+        return next;
+      });
+
+      await publishSeatEvent({
+        type: "seat-update",
+        action: "leave",
+        seat_id: seatId,
+        person: buildSeatPerson(
+          currentUser
+        ),
+      });
+
       return;
     }
+
+    const previousSeat =
+      Object.keys(
+        seatAssignments
+      ).find(
+        (id) =>
+          seatAssignments[id]?.id ===
+          currentUser.id
+      );
+
+    const nextAssignments = {
+      ...seatAssignments,
+    };
+
+    if (previousSeat) {
+      delete nextAssignments[
+        previousSeat
+      ];
+    }
+
+    nextAssignments[seatId] =
+      buildSeatPerson(
+        currentUser
+      );
+
+    setSeatAssignments(
+      nextAssignments
+    );
 
     setSelectedSeat(seatId);
     setMuted(true);
@@ -953,6 +1581,16 @@ export default function Meeting() {
           )
         );
     }
+
+    await publishSeatEvent({
+      type: "seat-update",
+      action: "sit",
+      seat_id: seatId,
+      person: buildSeatPerson(
+        currentUser
+      ),
+      assignments: nextAssignments,
+    });
   };
 
   /* =========================
@@ -964,6 +1602,7 @@ export default function Meeting() {
       alert(
         "Please choose a seat before speaking."
       );
+
       return;
     }
 
@@ -971,6 +1610,7 @@ export default function Meeting() {
       alert(
         "Your microphone has been locked by the meeting admin."
       );
+
       return;
     }
 
@@ -981,16 +1621,16 @@ export default function Meeting() {
       alert(
         "You are not connected to the meeting."
       );
+
       return;
     }
 
     const shouldEnable = muted;
 
     try {
-      await room.localParticipant
-        .setMicrophoneEnabled(
-          shouldEnable
-        );
+      await room.localParticipant.setMicrophoneEnabled(
+        shouldEnable
+      );
 
       setMuted(!shouldEnable);
     } catch (error) {
@@ -1006,48 +1646,58 @@ export default function Meeting() {
   };
 
   /* =========================
-     ADMIN: LOCK MIC
+     ADMIN MIC
   ========================= */
 
-  const lockCurrentMemberMic = async () => {
-    if (!isMeetingAdmin) return;
+  const lockCurrentMemberMic =
+    async () => {
+      if (!isMeetingAdmin) return;
 
-    setLockedMic(true);
-    setMuted(true);
+      setLockedMic(true);
+      setMuted(true);
 
-    const room =
-      liveKitRoomRef.current;
+      const room =
+        liveKitRoomRef.current;
 
-    if (room) {
-      try {
-        await room.localParticipant
-          .setMicrophoneEnabled(false);
-      } catch (error) {
-        console.error(
-          "Mic lock error:",
-          error
-        );
+      if (room) {
+        try {
+          await room.localParticipant.setMicrophoneEnabled(
+            false
+          );
+        } catch (error) {
+          console.error(
+            "Mic lock error:",
+            error
+          );
+        }
       }
-    }
-  };
+    };
+
+  const unlockCurrentMemberMic =
+    () => {
+      if (!isMeetingAdmin) return;
+
+      setLockedMic(false);
+    };
 
   /* =========================
-     ADMIN: UNLOCK MIC
-  ========================= */
-
-  const unlockCurrentMemberMic = () => {
-    if (!isMeetingAdmin) return;
-
-    setLockedMic(false);
-  };
-
-  /* =========================
-     ADMIN: REMOVE FROM SEAT
+     ADMIN REMOVE SEAT
   ========================= */
 
   const removeCurrentMemberFromSeat =
     async () => {
       if (!isMeetingAdmin) return;
+
+      if (!selectedSeat) {
+        alert(
+          "No member is currently selected in your seat."
+        );
+
+        return;
+      }
+
+      const seatBeingRemoved =
+        selectedSeat;
 
       setSelectedSeat(null);
       setMuted(true);
@@ -1057,8 +1707,9 @@ export default function Meeting() {
 
       if (room) {
         try {
-          await room.localParticipant
-            .setMicrophoneEnabled(false);
+          await room.localParticipant.setMicrophoneEnabled(
+            false
+          );
         } catch (error) {
           console.error(
             "Remove from seat mic error:",
@@ -1066,16 +1717,62 @@ export default function Meeting() {
           );
         }
       }
+
+      setSeatAssignments((old) => {
+        const next = { ...old };
+
+        delete next[seatBeingRemoved];
+
+        return next;
+      });
+
+      await publishSeatEvent({
+        type: "seat-update",
+        action: "leave",
+        seat_id: seatBeingRemoved,
+        person: buildSeatPerson(
+          currentUser
+        ),
+      });
     };
 
   /* =========================
-     ADMIN: CHANGE SEAT COUNT
+     ADMIN SEAT CAPACITY
   ========================= */
 
-  const changeSeatCapacity = (
+  const changeSeatCapacity = async (
     amount
   ) => {
     if (!isMeetingAdmin) return;
+
+    const occupiedOutsideLimit =
+      Object.keys(
+        seatAssignments
+      ).some((seatId) => {
+        const number = Number(
+          seatId.replace(
+            "seat-",
+            ""
+          )
+        );
+
+        return number > amount;
+      });
+
+    if (occupiedOutsideLimit) {
+      alert(
+        "Some seats above the new limit are occupied. Those members must leave their seats first."
+      );
+
+      return;
+    }
+
+    setSeatCapacity(amount);
+
+    await publishSeatEvent({
+      type: "capacity-update",
+      amount,
+    });
 
     if (selectedSeat) {
       const seatNumber = Number(
@@ -1086,13 +1783,6 @@ export default function Meeting() {
       );
 
       if (seatNumber > amount) {
-        const confirmChange =
-          window.confirm(
-            "A selected seat is outside the new seat limit. Continue?"
-          );
-
-        if (!confirmChange) return;
-
         setSelectedSeat(null);
         setMuted(true);
 
@@ -1111,8 +1801,6 @@ export default function Meeting() {
         }
       }
     }
-
-    setSeatCapacity(amount);
   };
 
   /* =========================
@@ -1157,19 +1845,11 @@ export default function Meeting() {
   return (
     <div className="meeting-page">
 
-      {/* =========================
-          LIVEKIT AUDIO CONTAINER
-      ========================= */}
-
       <div
         ref={audioContainerRef}
         className="audio-container"
         aria-hidden="true"
       />
-
-      {/* =========================
-          BACKGROUND
-      ========================= */}
 
       <div
         className="live-background"
@@ -1179,7 +1859,9 @@ export default function Meeting() {
           className="live-bg-layer visible"
           style={{
             background:
-              LIVE_THEMES[themeIndex],
+              LIVE_THEMES[
+                themeIndex
+              ],
           }}
         />
 
@@ -1746,6 +2428,7 @@ export default function Meeting() {
           max-height: 145px;
           overflow-y: auto;
           padding-right: 2px;
+          scroll-behavior: smooth;
         }
 
         .comment {
@@ -1776,6 +2459,16 @@ export default function Meeting() {
         .comment-name {
           color: #facc15;
           font-weight: 900;
+        }
+
+        .tagged-name {
+          color: #67e8f9;
+          font-weight: 900;
+          background:
+            rgba(34,211,238,.13);
+          padding:
+            2px 4px;
+          border-radius: 5px;
         }
 
         .join-comment {
@@ -2014,6 +2707,14 @@ export default function Meeting() {
           border-bottom:
             1px solid
             rgba(255,255,255,.06);
+
+          cursor: pointer;
+          border-radius: 9px;
+        }
+
+        .active-person:active {
+          background:
+            rgba(15,118,110,.25);
         }
 
         .active-person img {
@@ -2041,6 +2742,13 @@ export default function Meeting() {
           margin-top: 2px;
           font-size: 9px;
           color: #86efac;
+        }
+
+        .tag-hint {
+          margin-top: 4px;
+          font-size: 7px;
+          color: #67e8f9;
+          font-weight: 800;
         }
 
         .entrance-overlay {
@@ -2273,21 +2981,24 @@ export default function Meeting() {
           .entrance-icon {
             animation: none;
           }
+
         }
 
       `}</style>
 
-      {/* =========================
-          HEADER
-      ========================= */}
+      {/* HEADER */}
 
       <header className="meeting-header">
 
         <button
           className="back-button"
-          onClick={() =>
-            navigate("/dashboard")
-          }
+          onClick={async () => {
+            if (joined) {
+              await leaveMeeting();
+            }
+
+            navigate("/dashboard");
+          }}
         >
           ←
         </button>
@@ -2311,14 +3022,13 @@ export default function Meeting() {
             setShowActive(true)
           }
         >
-          👥 {activeMembers.length + 4}
+          👥{" "}
+          {activeMembers.length + 4}
         </button>
 
       </header>
 
-      {/* =========================
-          MAIN
-      ========================= */}
+      {/* MAIN */}
 
       <main className="meeting-content">
 
@@ -2341,9 +3051,7 @@ export default function Meeting() {
 
         </div>
 
-        {/* =========================
-            ADMINS
-        ========================= */}
+        {/* ADMINS */}
 
         <section className="room-card">
 
@@ -2428,9 +3136,7 @@ export default function Meeting() {
 
         </section>
 
-        {/* =========================
-            MEMBER SEATS
-        ========================= */}
+        {/* MEMBER SEATS */}
 
         <section className="room-card members-card">
 
@@ -2461,14 +3167,19 @@ export default function Meeting() {
             {memberSeats.map(
               (seat) => {
 
+                const seatedPerson =
+                  seatAssignments[
+                    seat.id
+                  ];
+
                 const selected =
-                  selectedSeat ===
-                  seat.id;
+                  seatedPerson?.id ===
+                  currentUser.id;
 
                 const isSpeaking =
-                  selected &&
+                  seatedPerson &&
                   speakingIds.includes(
-                    currentUser.id
+                    seatedPerson.id
                   );
 
                 return (
@@ -2489,23 +3200,21 @@ export default function Meeting() {
 
                     <div className="member-avatar">
 
-                      {selected ? (
+                      {seatedPerson ? (
 
                         <>
                           <img
                             src={
-                              currentUser.avatar
+                              seatedPerson.avatar
                             }
                             alt={
-                              currentUser.name
+                              seatedPerson.name
                             }
                           />
 
-                          {!muted &&
-                            !lockedMic &&
-                            isSpeaking && (
-                              <span className="speaking-ring" />
-                            )}
+                          {isSpeaking && (
+                            <span className="speaking-ring" />
+                          )}
                         </>
 
                       ) : (
@@ -2520,24 +3229,26 @@ export default function Meeting() {
 
                     <span className="member-name">
 
-                      {selected
-                        ? currentUser.name
+                      {seatedPerson
+                        ? seatedPerson.name
                         : `Seat ${seat.number}`}
 
                     </span>
 
-                    {selected && (
-
+                    {seatedPerson && (
                       <span className="member-status">
 
-                        {lockedMic
-                          ? "🔒 Mic locked"
-                          : muted
-                          ? "🔇 Muted"
-                          : "🎙️ Speaking"}
+                        {selected
+                          ? lockedMic
+                            ? "🔒 Mic locked"
+                            : muted
+                            ? "🔇 Muted"
+                            : "🎙️ Speaking"
+                          : isSpeaking
+                          ? "🎙️ Speaking"
+                          : "🟢 Seated"}
 
                       </span>
-
                     )}
 
                   </button>
@@ -2550,9 +3261,7 @@ export default function Meeting() {
 
         </section>
 
-        {/* =========================
-            ADMIN CONTROLS
-        ========================= */}
+        {/* ADMIN CONTROLS */}
 
         {isMeetingAdmin && (
 
@@ -2633,12 +3342,13 @@ export default function Meeting() {
 
               <button
                 className="admin-action success"
-                onClick={() => {
+                onClick={async () => {
 
                   if (!joined) {
                     alert(
                       "Member must join the meeting first."
                     );
+
                     return;
                   }
 
@@ -2646,17 +3356,34 @@ export default function Meeting() {
                     alert(
                       "Member is already seated."
                     );
+
                     return;
                   }
 
-                  const firstSeat =
-                    memberSeats[0];
-
-                  if (firstSeat) {
-                    setSelectedSeat(
-                      firstSeat.id
+                  const occupiedSeats =
+                    Object.keys(
+                      seatAssignments
                     );
+
+                  const firstAvailable =
+                    memberSeats.find(
+                      (seat) =>
+                        !occupiedSeats.includes(
+                          seat.id
+                        )
+                    );
+
+                  if (!firstAvailable) {
+                    alert(
+                      "There are no empty seats."
+                    );
+
+                    return;
                   }
+
+                  await chooseSeat(
+                    firstAvailable.id
+                  );
 
                 }}
               >
@@ -2685,9 +3412,7 @@ export default function Meeting() {
 
         )}
 
-        {/* =========================
-            COMMENTS
-        ========================= */}
+        {/* COMMENTS */}
 
         <section className="room-card comments-card">
 
@@ -2703,64 +3428,102 @@ export default function Meeting() {
 
           </div>
 
-          <div className="comments-list">
+          <div
+            ref={commentsListRef}
+            className="comments-list"
+          >
 
             {comments.map(
-              (comment) => (
+              (comment) => {
 
-                <div
-                  key={comment.id}
-                  className={
-                    comment.type === "join"
-                      ? "comment join-comment"
-                      : "comment"
-                  }
-                >
+                const taggedName =
+                  comment.text
+                    ?.match(
+                      /^(@.+?)\s/
+                    )?.[1];
 
-                  <div className="comment-avatar">
+                let commentText =
+                  comment.text || "";
 
-                    <img
-                      src={
-                        comment.avatar ||
-                        makeAvatar(
+                if (
+                  taggedName &&
+                  comment.taggedMemberId
+                ) {
+                  commentText =
+                    comment.text.slice(
+                      taggedName.length
+                    );
+                }
+
+                return (
+
+                  <div
+                    key={comment.id}
+                    className={
+                      comment.type ===
+                      "join"
+                        ? "comment join-comment"
+                        : "comment"
+                    }
+                  >
+
+                    <div className="comment-avatar">
+
+                      <img
+                        src={
+                          comment.avatar ||
+                          makeAvatar(
+                            comment.name
+                          )
+                        }
+                        alt={
                           comment.name
-                        )
-                      }
-                      alt={
-                        comment.name
-                      }
-                    />
+                        }
+                      />
 
-                  </div>
+                    </div>
 
-                  <div>
+                    <div>
 
-                    <span className="comment-name">
-                      {comment.name}
-                    </span>
-
-                    {comment.type ===
-                    "join" ? (
-
-                      <span className="join-text">
-                        {" "}
-                        joined the meeting
+                      <span className="comment-name">
+                        {comment.name}
                       </span>
 
-                    ) : (
+                      {comment.type ===
+                      "join" ? (
 
-                      <>
-                        :{" "}
-                        {comment.text}
-                      </>
+                        <span className="join-text">
+                          {" "}
+                          joined the meeting
+                        </span>
 
-                    )}
+                      ) : (
+
+                        <>
+                          :{" "}
+
+                          {comment.taggedMemberId &&
+                          taggedName ? (
+                            <>
+                              <span className="tagged-name">
+                                {taggedName}
+                              </span>
+
+                              {commentText}
+                            </>
+                          ) : (
+                            comment.text
+                          )}
+                        </>
+
+                      )}
+
+                    </div>
 
                   </div>
 
-                </div>
-
-              )
+                );
+              }
             )}
 
           </div>
@@ -2768,6 +3531,7 @@ export default function Meeting() {
           <div className="message-area">
 
             <input
+              ref={messageInputRef}
               className="message-input"
               value={message}
               onChange={(event) =>
@@ -2778,7 +3542,8 @@ export default function Meeting() {
               onKeyDown={(event) => {
 
                 if (
-                  event.key === "Enter"
+                  event.key ===
+                  "Enter"
                 ) {
                   sendMessage();
                 }
@@ -2809,9 +3574,7 @@ export default function Meeting() {
 
       </main>
 
-      {/* =========================
-          BOTTOM CONTROLS
-      ========================= */}
+      {/* BOTTOM CONTROLS */}
 
       <footer className="controls">
 
@@ -2821,7 +3584,9 @@ export default function Meeting() {
             className="join-button"
             onClick={joinMeeting}
             disabled={
-              Boolean(connectionStatus)
+              Boolean(
+                connectionStatus
+              )
             }
           >
             {connectionStatus
@@ -2841,7 +3606,9 @@ export default function Meeting() {
                   ? "active"
                   : ""
               }`}
-              onClick={toggleMute}
+              onClick={
+                toggleMute
+              }
             >
               {lockedMic
                 ? "🔒"
@@ -2858,8 +3625,16 @@ export default function Meeting() {
               }`}
               onClick={async () => {
 
-                if (selectedSeat) {
-                  setSelectedSeat(null);
+                if (
+                  selectedSeat
+                ) {
+                  const seatId =
+                    selectedSeat;
+
+                  setSelectedSeat(
+                    null
+                  );
+
                   setMuted(true);
 
                   const room =
@@ -2867,10 +3642,9 @@ export default function Meeting() {
 
                   if (room) {
                     try {
-                      await room.localParticipant
-                        .setMicrophoneEnabled(
-                          false
-                        );
+                      await room.localParticipant.setMicrophoneEnabled(
+                        false
+                      );
                     } catch (error) {
                       console.error(
                         "Mic disable error:",
@@ -2878,10 +3652,37 @@ export default function Meeting() {
                       );
                     }
                   }
+
+                  setSeatAssignments(
+                    (old) => {
+                      const next = {
+                        ...old,
+                      };
+
+                      delete next[
+                        seatId
+                      ];
+
+                      return next;
+                    }
+                  );
+
+                  await publishSeatEvent({
+                    type: "seat-update",
+                    action: "leave",
+                    seat_id: seatId,
+                    person:
+                      buildSeatPerson(
+                        currentUser
+                      ),
+                  });
+
                 } else {
+
                   alert(
                     "Tap an empty seat above to sit down."
                   );
+
                 }
 
               }}
@@ -2898,7 +3699,8 @@ export default function Meeting() {
                     ".comments-card"
                   )
                   ?.scrollIntoView({
-                    behavior: "smooth",
+                    behavior:
+                      "smooth",
                   });
 
               }}
@@ -2917,7 +3719,9 @@ export default function Meeting() {
 
             <button
               className="leave-button"
-              onClick={leaveMeeting}
+              onClick={
+                leaveMeeting
+              }
             >
               LEAVE
             </button>
@@ -2928,9 +3732,7 @@ export default function Meeting() {
 
       </footer>
 
-      {/* =========================
-          ACTIVE MEMBERS
-      ========================= */}
+      {/* ACTIVE MEMBERS */}
 
       {showActive && (
 
@@ -2971,6 +3773,10 @@ export default function Meeting() {
                 <div
                   className="active-person"
                   key={admin.id}
+                  onClick={() =>
+                    tagMember(admin)
+                  }
+                  title={`Tag ${admin.name}`}
                 >
 
                   <img
@@ -2985,8 +3791,13 @@ export default function Meeting() {
                     </strong>
 
                     <span>
-                      🟢 {admin.role}
+                      🟢{" "}
+                      {admin.role}
                     </span>
+
+                    <div className="tag-hint">
+                      Tap to tag
+                    </div>
 
                   </div>
 
@@ -2996,44 +3807,72 @@ export default function Meeting() {
             )}
 
             {activeMembers.map(
-              (person) => (
+              (person) => {
 
-                <div
-                  className="active-person"
-                  key={person.id}
-                >
+                const seated =
+                  Object.values(
+                    seatAssignments
+                  ).some(
+                    (seatPerson) =>
+                      seatPerson?.id ===
+                      person.id
+                  );
 
-                  <img
-                    src={person.avatar}
-                    alt={person.name}
-                  />
+                return (
 
-                  <div className="active-person-info">
+                  <div
+                    className="active-person"
+                    key={person.id}
+                    onClick={() =>
+                      tagMember(person)
+                    }
+                    title={`Tag ${person.name}`}
+                  >
 
-                    <strong>
-                      {person.name}
-                    </strong>
+                    <img
+                      src={
+                        person.avatar
+                      }
+                      alt={
+                        person.name
+                      }
+                    />
 
-                    <span>
-                      {speakingIds.includes(
-                        person.id
-                      )
-                        ? "🎙️ Speaking"
-                        : "🟢 Active now"}
-                    </span>
+                    <div className="active-person-info">
+
+                      <strong>
+                        {person.name}
+                      </strong>
+
+                      <span>
+                        {speakingIds.includes(
+                          person.id
+                        )
+                          ? "🎙️ Speaking"
+                          : seated
+                          ? "🪑 Seated"
+                          : "🟢 Active now"}
+                      </span>
+
+                      <div className="tag-hint">
+                        Tap to tag
+                      </div>
+
+                    </div>
 
                   </div>
 
-                </div>
-
-              )
+                );
+              }
             )}
 
-            {activeMembers.length === 0 && (
+            {activeMembers.length ===
+              0 && (
 
               <p
                 style={{
-                  textAlign: "center",
+                  textAlign:
+                    "center",
                   opacity: .55,
                   fontSize: 12,
                   marginTop: 25,
@@ -3050,9 +3889,7 @@ export default function Meeting() {
 
       )}
 
-      {/* =========================
-          FULL SCREEN ENTRANCE
-      ========================= */}
+      {/* ENTRANCE */}
 
       {entrance && (
 
@@ -3062,7 +3899,8 @@ export default function Meeting() {
 
             <div
               className={`entrance-icon ${
-                entrance.type === "admin"
+                entrance.type ===
+                "admin"
                   ? "admin"
                   : ""
               }`}
