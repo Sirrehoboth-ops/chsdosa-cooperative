@@ -43,6 +43,17 @@ const LIVE_THEMES = [
   "linear-gradient(135deg, #071a2b, #0369a1, #164e63)",
 ];
 
+const REACTIONS = ["😂", "❤️", "👏", "🔥", "👍", "🎉"];
+
+const GIFTS = [
+  { emoji: "🎁", name: "Gift" },
+  { emoji: "🌹", name: "Rose" },
+  { emoji: "🎂", name: "Cake" },
+  { emoji: "🏆", name: "Trophy" },
+  { emoji: "💎", name: "Diamond" },
+  { emoji: "🎈", name: "Balloon" },
+];
+
 function makeAvatar(name) {
   const safeName = name || "CHSDOSA";
   const encodedName = encodeURIComponent(safeName);
@@ -67,6 +78,9 @@ export default function Meeting() {
   const seatAssignmentsRef = useRef({});
   const seatCapacityRef = useRef(20);
   const processedChatIdsRef = useRef(new Set());
+
+  const musicContextRef = useRef(null);
+  const musicTimerRef = useRef(null);
 
   const [member, setMember] = useState(null);
   const [loadingMember, setLoadingMember] = useState(true);
@@ -107,6 +121,10 @@ export default function Meeting() {
   const [themeIndex, setThemeIndex] = useState(0);
   const [nextThemeIndex, setNextThemeIndex] = useState(1);
   const [themeFading, setThemeFading] = useState(false);
+
+  const [funAnimations, setFunAnimations] = useState([]);
+
+  const [musicPlaying, setMusicPlaying] = useState(false);
 
   const currentUser = useMemo(() => {
     const name =
@@ -277,6 +295,35 @@ export default function Meeting() {
   }, [comments]);
 
   /* =========================
+     FUN ANIMATION
+  ========================= */
+
+  const showFunAnimation = (
+    emoji,
+    type = "reaction",
+    name = currentUser.name
+  ) => {
+    const id =
+      `${type}-${Date.now()}-${Math.random()}`;
+
+    setFunAnimations((old) => [
+      ...old,
+      {
+        id,
+        emoji,
+        type,
+        name,
+      },
+    ]);
+
+    window.setTimeout(() => {
+      setFunAnimations((old) =>
+        old.filter((item) => item.id !== id)
+      );
+    }, 2600);
+  };
+
+  /* =========================
      REMOVE AUDIO
   ========================= */
 
@@ -321,72 +368,39 @@ export default function Meeting() {
 
   /* =========================
      PARTICIPANT HELPERS
-     SHARED MEMBER PROFILE
   ========================= */
 
   const participantToMember = (participant) => {
-    let profile = {};
-
-    try {
-      if (participant?.metadata) {
-        profile = JSON.parse(
-          participant.metadata
-        );
-      }
-    } catch (error) {
-      console.log(
-        "Participant profile metadata error:",
-        error
-      );
-    }
-
     const name =
-      profile?.name ||
-      participant?.name ||
-      participant?.identity ||
+      participant.name ||
+      participant.identity ||
       "Member";
 
-    const avatar =
-      profile?.avatar ||
-      profile?.avatar_url ||
-      makeAvatar(name);
-
     return {
-      id:
-        profile?.id ||
-        participant?.identity ||
-        `member-${Date.now()}`,
+      id: participant.identity,
       name,
-      avatar,
-      memberNumber:
-        profile?.memberNumber ||
-        profile?.member_number ||
-        "",
+      avatar: makeAvatar(name),
     };
   };
 
-  const buildSeatPerson = (
-    person = currentUser
-  ) => {
+  const buildSeatPerson = (person = currentUser) => {
     return {
       id: person.id,
       name: person.name,
       avatar:
         person.avatar ||
-        person.avatar_url ||
         makeAvatar(person.name),
-      memberNumber:
-        person.memberNumber ||
-        person.member_number ||
-        "",
     };
   };
 
   /* =========================
-     PUBLISH SEAT EVENT
+     PUBLISH DATA
   ========================= */
 
-  const publishSeatEvent = async (event) => {
+  const publishRoomData = async (
+    topic,
+    data
+  ) => {
     const room = liveKitRoomRef.current;
 
     if (!room) return;
@@ -394,7 +408,7 @@ export default function Meeting() {
     try {
       const payload = new TextEncoder().encode(
         JSON.stringify({
-          ...event,
+          ...data,
           sender_id: currentUser.id,
         })
       );
@@ -403,15 +417,26 @@ export default function Meeting() {
         payload,
         {
           reliable: true,
-          topic: "chsdosa-seats",
+          topic,
         }
       );
     } catch (error) {
       console.error(
-        "Seat event publish error:",
+        `Room data publish error (${topic}):`,
         error
       );
     }
+  };
+
+  /* =========================
+     PUBLISH SEAT EVENT
+  ========================= */
+
+  const publishSeatEvent = async (event) => {
+    await publishRoomData(
+      "chsdosa-seats",
+      event
+    );
   };
 
   /* =========================
@@ -461,6 +486,273 @@ export default function Meeting() {
         "Chat publish error:",
         error
       );
+    }
+  };
+
+  /* =========================
+     REACTIONS
+  ========================= */
+
+  const sendReaction = async (emoji) => {
+    if (!joined) {
+      alert("Please join the meeting first.");
+      return;
+    }
+
+    showFunAnimation(
+      emoji,
+      "reaction",
+      currentUser.name
+    );
+
+    setComments((old) => [
+      ...old,
+      {
+        id: `reaction-${Date.now()}-${Math.random()}`,
+        type: "fun",
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+        text: `${emoji} reacted`,
+        taggedMemberId: null,
+      },
+    ]);
+
+    await publishRoomData(
+      "chsdosa-fun",
+      {
+        type: "reaction",
+        emoji,
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+      }
+    );
+  };
+
+  /* =========================
+     SLIPPER
+  ========================= */
+
+  const throwSlipper = async () => {
+    if (!joined) {
+      alert("Please join the meeting first.");
+      return;
+    }
+
+    showFunAnimation(
+      "🩴",
+      "slipper",
+      currentUser.name
+    );
+
+    setComments((old) => [
+      ...old,
+      {
+        id: `slipper-${Date.now()}-${Math.random()}`,
+        type: "fun",
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+        text: "🩴 threw a slipper!",
+        taggedMemberId: null,
+      },
+    ]);
+
+    await publishRoomData(
+      "chsdosa-fun",
+      {
+        type: "slipper",
+        emoji: "🩴",
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+      }
+    );
+  };
+
+  /* =========================
+     FREE GIFTS
+  ========================= */
+
+  const sendGift = async (gift) => {
+    if (!joined) {
+      alert("Please join the meeting first.");
+      return;
+    }
+
+    showFunAnimation(
+      gift.emoji,
+      "gift",
+      currentUser.name
+    );
+
+    setComments((old) => [
+      ...old,
+      {
+        id: `gift-${Date.now()}-${Math.random()}`,
+        type: "fun",
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+        text: `${gift.emoji} sent a free ${gift.name}`,
+        taggedMemberId: null,
+      },
+    ]);
+
+    await publishRoomData(
+      "chsdosa-fun",
+      {
+        type: "gift",
+        emoji: gift.emoji,
+        giftName: gift.name,
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+      }
+    );
+  };
+
+  /* =========================
+     FREE ROOM MUSIC
+     ========================= */
+
+  const stopRoomMusic = () => {
+    try {
+      if (musicTimerRef.current) {
+        clearTimeout(musicTimerRef.current);
+        musicTimerRef.current = null;
+      }
+
+      const context = musicContextRef.current;
+
+      if (context) {
+        context.close().catch(() => {});
+      }
+
+      musicContextRef.current = null;
+    } catch (error) {
+      console.log("Music stop error:", error);
+    }
+
+    setMusicPlaying(false);
+  };
+
+  const startRoomMusic = () => {
+    try {
+      stopRoomMusic();
+
+      const AudioContext =
+        window.AudioContext ||
+        window.webkitAudioContext;
+
+      if (!AudioContext) {
+        alert(
+          "Room music is not supported by this browser."
+        );
+        return;
+      }
+
+      const context = new AudioContext();
+
+      musicContextRef.current = context;
+
+      const notes = [
+        261.63,
+        329.63,
+        392.0,
+        329.63,
+        293.66,
+        349.23,
+        440.0,
+        349.23,
+      ];
+
+      let index = 0;
+
+      const playNote = () => {
+        if (
+          !musicContextRef.current ||
+          context.state === "closed"
+        ) {
+          return;
+        }
+
+        const oscillator =
+          context.createOscillator();
+
+        const gain =
+          context.createGain();
+
+        oscillator.type = "sine";
+
+        oscillator.frequency.value =
+          notes[index % notes.length];
+
+        gain.gain.setValueAtTime(
+          0.0001,
+          context.currentTime
+        );
+
+        gain.gain.exponentialRampToValueAtTime(
+          0.045,
+          context.currentTime + 0.03
+        );
+
+        gain.gain.exponentialRampToValueAtTime(
+          0.0001,
+          context.currentTime + 0.45
+        );
+
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+
+        oscillator.start();
+        oscillator.stop(
+          context.currentTime + 0.5
+        );
+
+        index++;
+
+        musicTimerRef.current =
+          setTimeout(playNote, 500);
+      };
+
+      playNote();
+
+      setMusicPlaying(true);
+    } catch (error) {
+      console.error(
+        "Room music error:",
+        error
+      );
+    }
+  };
+
+  const toggleRoomMusic = async (
+    broadcast = true
+  ) => {
+    if (!joined) {
+      alert("Please join the meeting first.");
+      return;
+    }
+
+    if (musicPlaying) {
+      stopRoomMusic();
+
+      if (broadcast) {
+        await publishRoomData(
+          "chsdosa-fun",
+          {
+            type: "music-stop",
+          }
+        );
+      }
+    } else {
+      startRoomMusic();
+
+      if (broadcast) {
+        await publishRoomData(
+          "chsdosa-fun",
+          {
+            type: "music-start",
+          }
+        );
+      }
     }
   };
 
@@ -551,16 +843,7 @@ export default function Meeting() {
                 item.id === person.id
             );
 
-            if (exists) {
-              return old.map((item) =>
-                item.id === person.id
-                  ? {
-                      ...item,
-                      ...person,
-                    }
-                  : item
-              );
-            }
+            if (exists) return old;
 
             return [...old, person];
           });
@@ -588,16 +871,7 @@ export default function Meeting() {
                 item.id === person.id
             );
 
-            if (exists) {
-              return old.map((item) =>
-                item.id === person.id
-                  ? {
-                      ...item,
-                      ...person,
-                    }
-                  : item
-              );
-            }
+            if (exists) return old;
 
             return [...old, person];
           });
@@ -623,100 +897,6 @@ export default function Meeting() {
           window.setTimeout(() => {
             setEntrance(null);
           }, 3500);
-        }
-      );
-
-      /* =========================
-         MEMBER PROFILE CHANGED
-      ========================= */
-
-      room.on(
-        RoomEvent.ParticipantMetadataChanged,
-        (metadata, participant) => {
-          const person =
-            participantToMember(
-              participant
-            );
-
-          setActiveMembers((old) =>
-            old.map((item) =>
-              item.id === person.id
-                ? {
-                    ...item,
-                    ...person,
-                  }
-                : item
-            )
-          );
-
-          setSeatAssignments((old) => {
-            const next = { ...old };
-
-            Object.keys(next).forEach(
-              (seatId) => {
-                if (
-                  next[seatId]?.id ===
-                  person.id
-                ) {
-                  next[seatId] = {
-                    ...next[seatId],
-                    ...person,
-                  };
-                }
-              }
-            );
-
-            return next;
-          });
-        }
-      );
-
-      /* =========================
-         MEMBER NAME CHANGED
-      ========================= */
-
-      room.on(
-        RoomEvent.ParticipantNameChanged,
-        (name, participant) => {
-          const person =
-            participantToMember(
-              participant
-            );
-
-          const updatedName =
-            name ||
-            person.name;
-
-          setActiveMembers((old) =>
-            old.map((item) =>
-              item.id === person.id
-                ? {
-                    ...item,
-                    name: updatedName,
-                  }
-                : item
-            )
-          );
-
-          setSeatAssignments((old) => {
-            const next = { ...old };
-
-            Object.keys(next).forEach(
-              (seatId) => {
-                if (
-                  next[seatId]?.id ===
-                  person.id
-                ) {
-                  next[seatId] = {
-                    ...next[seatId],
-                    name: updatedName,
-                  };
-                }
-              }
-            );
-
-            return next;
-          });
         }
       );
 
@@ -789,9 +969,7 @@ export default function Meeting() {
 
             const data = JSON.parse(decoded);
 
-            /* =========================
-               CHAT
-            ========================= */
+            /* CHAT */
 
             if (
               topic ===
@@ -859,9 +1037,7 @@ export default function Meeting() {
               return;
             }
 
-            /* =========================
-               SEATS
-            ========================= */
+            /* SEATS */
 
             if (
               topic ===
@@ -1041,6 +1217,128 @@ export default function Meeting() {
                 return;
               }
             }
+
+            /* FUN ROOM EVENTS */
+
+            if (
+              topic ===
+              "chsdosa-fun"
+            ) {
+              if (
+                data.sender_id ===
+                currentUser.id
+              ) {
+                return;
+              }
+
+              const remoteName =
+                data.name ||
+                participant?.name ||
+                "Member";
+
+              if (
+                data.type ===
+                "reaction"
+              ) {
+                showFunAnimation(
+                  data.emoji || "🎉",
+                  "reaction",
+                  remoteName
+                );
+
+                setComments((old) => [
+                  ...old,
+                  {
+                    id: `remote-reaction-${Date.now()}-${Math.random()}`,
+                    type: "fun",
+                    name: remoteName,
+                    avatar:
+                      data.avatar ||
+                      makeAvatar(
+                        remoteName
+                      ),
+                    text: `${data.emoji || "🎉"} reacted`,
+                    taggedMemberId: null,
+                  },
+                ]);
+
+                return;
+              }
+
+              if (
+                data.type ===
+                "slipper"
+              ) {
+                showFunAnimation(
+                  "🩴",
+                  "slipper",
+                  remoteName
+                );
+
+                setComments((old) => [
+                  ...old,
+                  {
+                    id: `remote-slipper-${Date.now()}-${Math.random()}`,
+                    type: "fun",
+                    name: remoteName,
+                    avatar:
+                      data.avatar ||
+                      makeAvatar(
+                        remoteName
+                      ),
+                    text: "🩴 threw a slipper!",
+                    taggedMemberId: null,
+                  },
+                ]);
+
+                return;
+              }
+
+              if (
+                data.type ===
+                "gift"
+              ) {
+                showFunAnimation(
+                  data.emoji || "🎁",
+                  "gift",
+                  remoteName
+                );
+
+                setComments((old) => [
+                  ...old,
+                  {
+                    id: `remote-gift-${Date.now()}-${Math.random()}`,
+                    type: "fun",
+                    name: remoteName,
+                    avatar:
+                      data.avatar ||
+                      makeAvatar(
+                        remoteName
+                      ),
+                    text: `${data.emoji || "🎁"} sent a free ${data.giftName || "gift"}`,
+                    taggedMemberId: null,
+                  },
+                ]);
+
+                return;
+              }
+
+              if (
+                data.type ===
+                "music-start"
+              ) {
+                startRoomMusic();
+                return;
+              }
+
+              if (
+                data.type ===
+                "music-stop"
+              ) {
+                stopRoomMusic();
+                return;
+              }
+            }
           } catch (error) {
             console.error(
               "Live data error:",
@@ -1059,6 +1357,8 @@ export default function Meeting() {
           setSpeakingIds([]);
           setConnectionStatus("");
 
+          stopRoomMusic();
+
           liveKitRoomRef.current = null;
         }
       );
@@ -1070,32 +1370,6 @@ export default function Meeting() {
           autoSubscribe: true,
         }
       );
-
-      /* =========================
-         PUBLISH CURRENT MEMBER PROFILE
-      ========================= */
-
-      try {
-        await room.localParticipant.setName(
-          currentUser.name
-        );
-
-        await room.localParticipant.setMetadata(
-          JSON.stringify({
-            id: currentUser.id,
-            name: currentUser.name,
-            avatar: currentUser.avatar,
-            memberNumber:
-              currentUser.memberNumber ||
-              "",
-          })
-        );
-      } catch (profileError) {
-        console.error(
-          "Unable to publish member profile:",
-          profileError
-        );
-      }
 
       await room.localParticipant.setMicrophoneEnabled(
         false
@@ -1125,16 +1399,7 @@ export default function Meeting() {
             person.id === currentUser.id
         );
 
-        if (exists) {
-          return old.map((person) =>
-            person.id === currentUser.id
-              ? {
-                  ...person,
-                  ...currentUser,
-                }
-              : person
-          );
-        }
+        if (exists) return old;
 
         return [...old, currentUser];
       });
@@ -1178,16 +1443,7 @@ export default function Meeting() {
                 item.id === person.id
             );
 
-            if (exists) {
-              return old.map((item) =>
-                item.id === person.id
-                  ? {
-                      ...item,
-                      ...person,
-                    }
-                  : item
-              );
-            }
+            if (exists) return old;
 
             return [
               ...old,
@@ -1280,6 +1536,8 @@ export default function Meeting() {
       "chsdosa-meeting-joined"
     );
 
+    stopRoomMusic();
+
     const room =
       liveKitRoomRef.current;
 
@@ -1342,6 +1600,8 @@ export default function Meeting() {
 
   useEffect(() => {
     return () => {
+      stopRoomMusic();
+
       const room =
         liveKitRoomRef.current;
 
@@ -1422,9 +1682,7 @@ export default function Meeting() {
     let taggedMemberId = null;
 
     const firstTagMatch =
-      text.match(
-        /^@(.+?)\s/
-      );
+      text.match(/^@(.+?)\s/);
 
     if (firstTagMatch) {
       const taggedName =
@@ -2034,7 +2292,7 @@ export default function Meeting() {
           padding:
             9px
             9px
-            96px;
+            115px;
           position: relative;
           z-index: 2;
         }
@@ -2492,6 +2750,10 @@ export default function Meeting() {
           font-weight: 800;
         }
 
+        .fun-comment {
+          color: #fde68a;
+        }
+
         .message-area {
           display: flex;
           gap: 6px;
@@ -2538,6 +2800,184 @@ export default function Meeting() {
           opacity: .4;
         }
 
+        /* =========================
+           FUN ROOM BAR
+        ========================= */
+
+        .fun-room {
+          margin-top: 8px;
+          padding: 8px;
+          border-radius: 15px;
+          background:
+            rgba(0,0,0,.25);
+          border:
+            1px solid
+            rgba(255,255,255,.10);
+        }
+
+        .fun-title {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 7px;
+          font-size: 9px;
+          font-weight: 900;
+        }
+
+        .free-label {
+          font-size: 7px;
+          color: #86efac;
+        }
+
+        .fun-buttons {
+          display: flex;
+          gap: 5px;
+          overflow-x: auto;
+          padding-bottom: 2px;
+        }
+
+        .fun-button {
+          flex: 0 0 auto;
+          min-width: 42px;
+          height: 37px;
+          border: 0;
+          border-radius: 11px;
+          color: white;
+          background:
+            rgba(255,255,255,.09);
+          cursor: pointer;
+          font-size: 18px;
+          transition:
+            transform .15s ease,
+            background .15s ease;
+        }
+
+        .fun-button:active {
+          transform: scale(.86);
+          background:
+            rgba(15,118,110,.75);
+        }
+
+        .music-button {
+          min-width: 74px;
+          font-size: 9px;
+          font-weight: 900;
+        }
+
+        /* =========================
+           FLOATING FUN
+        ========================= */
+
+        .fun-animation-layer {
+          position: fixed;
+          inset: 0;
+          z-index: 180;
+          pointer-events: none;
+          overflow: hidden;
+        }
+
+        .fun-animation {
+          position: absolute;
+          left: 50%;
+          top: 58%;
+          font-size: 38px;
+          animation:
+            funFloat 2.5s ease-out forwards;
+          text-shadow:
+            0 4px 18px
+            rgba(0,0,0,.5);
+        }
+
+        .fun-animation.reaction {
+          animation:
+            reactionFloat 2.5s ease-out forwards;
+        }
+
+        .fun-animation.gift {
+          animation:
+            giftFloat 2.5s ease-out forwards;
+        }
+
+        .fun-animation.slipper {
+          animation:
+            slipperThrow 2.5s cubic-bezier(.2,.7,.2,1) forwards;
+        }
+
+        @keyframes reactionFloat {
+          0% {
+            opacity: 0;
+            transform:
+              translate(-50%, 80px)
+              scale(.4)
+              rotate(-15deg);
+          }
+
+          15% {
+            opacity: 1;
+          }
+
+          100% {
+            opacity: 0;
+            transform:
+              translate(
+                calc(-50% + 80px),
+                -220px
+              )
+              scale(1.7)
+              rotate(18deg);
+          }
+        }
+
+        @keyframes giftFloat {
+          0% {
+            opacity: 0;
+            transform:
+              translate(-50%, 100px)
+              scale(.3)
+              rotate(-20deg);
+          }
+
+          20% {
+            opacity: 1;
+          }
+
+          100% {
+            opacity: 0;
+            transform:
+              translate(
+                calc(-50% - 100px),
+                -250px
+              )
+              scale(1.5)
+              rotate(25deg);
+          }
+        }
+
+        @keyframes slipperThrow {
+          0% {
+            opacity: 0;
+            transform:
+              translate(-50%, 100px)
+              rotate(-70deg)
+              scale(.5);
+          }
+
+          12% {
+            opacity: 1;
+          }
+
+          100% {
+            opacity: 0;
+            transform:
+              translate(
+                calc(-50% + 180px),
+                -180px
+              )
+              rotate(540deg)
+              scale(1.25);
+          }
+        }
+
         .controls {
           position: fixed;
           left: 0;
@@ -2549,10 +2989,10 @@ export default function Meeting() {
           align-items: center;
           justify-content: center;
 
-          gap: 8px;
+          gap: 7px;
 
           padding:
-            8px 10px
+            8px 7px
             calc(
               8px +
               env(safe-area-inset-bottom)
@@ -2978,7 +3418,8 @@ export default function Meeting() {
           .speaking-ring,
           .entrance-card,
           .entrance-overlay,
-          .entrance-icon {
+          .entrance-icon,
+          .fun-animation {
             animation: none;
           }
 
@@ -3027,6 +3468,25 @@ export default function Meeting() {
         </button>
 
       </header>
+
+      {/* FUN ANIMATION LAYER */}
+
+      <div
+        className="fun-animation-layer"
+        aria-hidden="true"
+      >
+        {funAnimations.map(
+          (item) => (
+            <div
+              key={item.id}
+              className={`fun-animation ${item.type}`}
+              title={item.name}
+            >
+              {item.emoji}
+            </div>
+          )
+        )}
+      </div>
 
       {/* MAIN */}
 
@@ -3463,6 +3923,9 @@ export default function Meeting() {
                       comment.type ===
                       "join"
                         ? "comment join-comment"
+                        : comment.type ===
+                          "fun"
+                        ? "comment fun-comment"
                         : "comment"
                     }
                   >
@@ -3566,6 +4029,86 @@ export default function Meeting() {
               onClick={sendMessage}
             >
               ➤
+            </button>
+
+          </div>
+
+        </section>
+
+        {/* FREE FUN ROOM */}
+
+        <section className="fun-room">
+
+          <div className="fun-title">
+
+            <span>
+              🎉 ROOM FUN
+            </span>
+
+            <span className="free-label">
+              FREE • NO MONEY
+            </span>
+
+          </div>
+
+          <div className="fun-buttons">
+
+            {REACTIONS.map(
+              (emoji) => (
+
+                <button
+                  key={emoji}
+                  className="fun-button"
+                  onClick={() =>
+                    sendReaction(emoji)
+                  }
+                  title={`Send ${emoji}`}
+                >
+                  {emoji}
+                </button>
+
+              )
+            )}
+
+            <button
+              className="fun-button"
+              onClick={throwSlipper}
+              title="Throw a slipper"
+            >
+              🩴
+            </button>
+
+            {GIFTS.slice(0, 4).map(
+              (gift) => (
+
+                <button
+                  key={gift.name}
+                  className="fun-button"
+                  onClick={() =>
+                    sendGift(gift)
+                  }
+                  title={`Send free ${gift.name}`}
+                >
+                  {gift.emoji}
+                </button>
+
+              )
+            )}
+
+            <button
+              className={`fun-button music-button ${
+                musicPlaying
+                  ? "active"
+                  : ""
+              }`}
+              onClick={() =>
+                toggleRoomMusic()
+              }
+              title="Free room music"
+            >
+              {musicPlaying
+                ? "⏸️ MUSIC"
+                : "🎵 MUSIC"}
             </button>
 
           </div>
@@ -3706,6 +4249,19 @@ export default function Meeting() {
               }}
             >
               💬
+            </button>
+
+            <button
+              className={`control ${
+                musicPlaying
+                  ? "active"
+                  : ""
+              }`}
+              onClick={() =>
+                toggleRoomMusic()
+              }
+            >
+              🎵
             </button>
 
             <button
