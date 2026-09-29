@@ -32,172 +32,11 @@ function Dashboard() {
    * SAVE DARK MODE
    */
   useEffect(() => {
-    localStorage.setItem("chsdosa-dark-mode", String(darkMode));
+    localStorage.setItem(
+      "chsdosa-dark-mode",
+      String(darkMode)
+    );
   }, [darkMode]);
-
-  /*
-   * LOAD MEMBER DATA
-   *
-   * Existing Supabase session is restored automatically.
-   * The member is NOT logged out when the app is closed/reopened.
-   */
-  useEffect(() => {
-    let mounted = true;
-
-    const startDashboard = async () => {
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error("SESSION ERROR:", error);
-        }
-
-        if (!session?.user) {
-          if (mounted) {
-            setBooting(false);
-            navigate("/login", { replace: true });
-          }
-          return;
-        }
-
-        await loadMemberData(session.user);
-
-        if (mounted) {
-          /*
-           * Small professional logo appearance when reopening
-           * the app with an existing login session.
-           */
-          setTimeout(() => {
-            if (mounted) {
-              setBooting(false);
-            }
-          }, 650);
-        }
-      } catch (error) {
-        console.error("DASHBOARD ERROR:", error);
-
-        if (mounted) {
-          setBooting(false);
-        }
-      }
-    };
-
-    startDashboard();
-
-    /*
-     * Listen for Supabase authentication changes.
-     */
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-
-      console.log("AUTH EVENT:", event);
-
-      if (session?.user) {
-        await loadMemberData(session.user);
-
-        if (mounted) {
-          setBooting(false);
-        }
-      } else if (event === "SIGNED_OUT") {
-        setMember(null);
-        setBalance(0);
-        setBooting(false);
-
-        navigate("/login", { replace: true });
-      }
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, [navigate]);
-
-  /*
-   * MOVING CHSDOSA SLIDESHOW
-   *
-   * No dots or manual indicators.
-   */
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setSlide((current) => (current + 1) % 5);
-    }, 4000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  /*
-   * PULL DOWN TO REFRESH
-   *
-   * Only refreshes when the Dashboard is already at the top.
-   * The Dashboard itself is not moved or shifted.
-   */
-  useEffect(() => {
-    const handleTouchStart = (event) => {
-      if (window.scrollY !== 0) return;
-
-      pullStartY.current = event.touches?.[0]?.clientY ?? null;
-      pulling.current = false;
-    };
-
-    const handleTouchMove = (event) => {
-      if (pullStartY.current === null) return;
-      if (window.scrollY !== 0) return;
-
-      const currentY = event.touches?.[0]?.clientY ?? 0;
-      const distance = currentY - pullStartY.current;
-
-      if (distance > 15) {
-        pulling.current = true;
-
-        // Prevent the Dashboard itself from being dragged downward.
-        event.preventDefault();
-      }
-    };
-
-    const handleTouchEnd = async () => {
-      if (!pulling.current) {
-        pullStartY.current = null;
-        return;
-      }
-
-      pullStartY.current = null;
-      pulling.current = false;
-
-      if (refreshing.current) return;
-
-      refreshing.current = true;
-
-      try {
-        await loadMemberData();
-      } finally {
-        refreshing.current = false;
-      }
-    };
-
-    document.addEventListener("touchstart", handleTouchStart, {
-      passive: true,
-    });
-
-    document.addEventListener("touchmove", handleTouchMove, {
-      passive: false,
-    });
-
-    document.addEventListener("touchend", handleTouchEnd, {
-      passive: true,
-    });
-
-    return () => {
-      document.removeEventListener("touchstart", handleTouchStart);
-      document.removeEventListener("touchmove", handleTouchMove);
-      document.removeEventListener("touchend", handleTouchEnd);
-    };
-  }, []);
 
   /*
    * LOAD MEMBER + ACCOUNT
@@ -222,7 +61,10 @@ function Dashboard() {
       /*
        * MEMBER DATA
        */
-      const { data: memberData, error: memberError } = await supabase
+      const {
+        data: memberData,
+        error: memberError,
+      } = await supabase
         .from("members")
         .select("*")
         .eq("id", user.id)
@@ -235,12 +77,17 @@ function Dashboard() {
         console.error(memberError);
       }
 
-      setMember(memberData);
+      if (memberData) {
+        setMember(memberData);
+      }
 
       /*
        * ACCOUNT BALANCE
        */
-      const { data: accountData, error: accountError } = await supabase
+      const {
+        data: accountData,
+        error: accountError,
+      } = await supabase
         .from("accounts")
         .select("balance")
         .eq("member_id", user.id)
@@ -259,26 +106,304 @@ function Dashboard() {
         setBalance(0);
       }
     } catch (error) {
-      console.error("LOAD MEMBER DATA ERROR:", error);
+      console.error(
+        "LOAD MEMBER DATA ERROR:",
+        error
+      );
     }
   };
 
   /*
+   * LOAD MEMBER DATA
+   *
+   * Existing Supabase session is restored automatically.
+   *
+   * The member is NOT logged out when the app
+   * is closed/reopened.
+   */
+  useEffect(() => {
+    let mounted = true;
+
+    const startDashboard = async () => {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error(
+            "SESSION ERROR:",
+            error
+          );
+        }
+
+        if (!session?.user) {
+          if (mounted) {
+            setBooting(false);
+
+            navigate("/login", {
+              replace: true,
+            });
+          }
+
+          return;
+        }
+
+        await loadMemberData(session.user);
+
+        if (mounted) {
+          /*
+           * Small professional logo appearance
+           * when reopening the app with an
+           * existing login session.
+           */
+          setTimeout(() => {
+            if (mounted) {
+              setBooting(false);
+            }
+          }, 650);
+        }
+      } catch (error) {
+        console.error(
+          "DASHBOARD ERROR:",
+          error
+        );
+
+        if (mounted) {
+          setBooting(false);
+        }
+      }
+    };
+
+    startDashboard();
+
+    /*
+     * Listen for Supabase authentication changes.
+     */
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+
+        console.log(
+          "AUTH EVENT:",
+          event
+        );
+
+        if (session?.user) {
+          /*
+           * Only load member data when authentication
+           * actually changes.
+           */
+          if (
+            event === "SIGNED_IN" ||
+            event === "INITIAL_SESSION" ||
+            event === "TOKEN_REFRESHED"
+          ) {
+            await loadMemberData(
+              session.user
+            );
+          }
+
+          if (mounted) {
+            setBooting(false);
+          }
+        } else if (
+          event === "SIGNED_OUT"
+        ) {
+          setMember(null);
+          setBalance(0);
+          setBooting(false);
+
+          navigate("/login", {
+            replace: true,
+          });
+        }
+      }
+    );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
+
+  /*
+   * MOVING CHSDOSA SLIDESHOW
+   *
+   * No dots or manual indicators.
+   */
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSlide(
+        (current) => (current + 1) % 5
+      );
+    }, 4000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  /*
+   * PULL DOWN TO REFRESH
+   *
+   * Normal scrolling is allowed.
+   *
+   * When the Dashboard is already at the top,
+   * pulling down slightly refreshes member/account
+   * data silently.
+   *
+   * IMPORTANT:
+   * We do NOT use event.preventDefault().
+   * This allows normal phone scrolling.
+   */
+  useEffect(() => {
+    const handleTouchStart = (event) => {
+      if (window.scrollY !== 0) {
+        return;
+      }
+
+      pullStartY.current =
+        event.touches?.[0]?.clientY ??
+        null;
+
+      pulling.current = false;
+    };
+
+    const handleTouchMove = (event) => {
+      if (
+        pullStartY.current === null
+      ) {
+        return;
+      }
+
+      if (window.scrollY !== 0) {
+        return;
+      }
+
+      const currentY =
+        event.touches?.[0]?.clientY ??
+        0;
+
+      const distance =
+        currentY -
+        pullStartY.current;
+
+      if (distance > 20) {
+        pulling.current = true;
+
+        /*
+         * DO NOT use preventDefault here.
+         *
+         * The phone must remain free to scroll.
+         */
+      }
+    };
+
+    const handleTouchEnd = async () => {
+      if (!pulling.current) {
+        pullStartY.current = null;
+        return;
+      }
+
+      pullStartY.current = null;
+      pulling.current = false;
+
+      if (refreshing.current) {
+        return;
+      }
+
+      refreshing.current = true;
+
+      try {
+        /*
+         * Silent refresh.
+         * No alert.
+         * No popup.
+         * No page reload.
+         */
+        await loadMemberData();
+      } catch (error) {
+        console.error(
+          "REFRESH ERROR:",
+          error
+        );
+      } finally {
+        refreshing.current = false;
+      }
+    };
+
+    document.addEventListener(
+      "touchstart",
+      handleTouchStart,
+      {
+        passive: true,
+      }
+    );
+
+    document.addEventListener(
+      "touchmove",
+      handleTouchMove,
+      {
+        passive: true,
+      }
+    );
+
+    document.addEventListener(
+      "touchend",
+      handleTouchEnd,
+      {
+        passive: true,
+      }
+    );
+
+    return () => {
+      document.removeEventListener(
+        "touchstart",
+        handleTouchStart
+      );
+
+      document.removeEventListener(
+        "touchmove",
+        handleTouchMove
+      );
+
+      document.removeEventListener(
+        "touchend",
+        handleTouchEnd
+      );
+    };
+  }, []);
+
+  /*
    * UPLOAD MEMBER PROFILE PICTURE
    */
-  const handleProfileUpload = async (event) => {
-    const file = event.target.files?.[0];
+  const handleProfileUpload = async (
+    event
+  ) => {
+    const file =
+      event.target.files?.[0];
 
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Please select an image file.");
+      alert(
+        "Please select an image file."
+      );
+
       event.target.value = "";
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Please choose an image smaller than 5MB.");
+    if (
+      file.size >
+      5 * 1024 * 1024
+    ) {
+      alert(
+        "Please choose an image smaller than 5MB."
+      );
+
       event.target.value = "";
       return;
     }
@@ -293,36 +418,66 @@ function Dashboard() {
       const user = session?.user;
 
       if (!user) {
-        navigate("/login", { replace: true });
+        navigate("/login", {
+          replace: true,
+        });
+
         return;
       }
 
       const fileExt =
-        file.name.split(".").pop()?.toLowerCase() || "jpg";
+        file.name
+          .split(".")
+          .pop()
+          ?.toLowerCase() ||
+        "jpg";
 
-      const fileName = `${user.id}.${fileExt}`;
-      const filePath = `members/${fileName}`;
+      const fileName =
+        `${user.id}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
+      const filePath =
+        `members/${fileName}`;
+
+      const {
+        error: uploadError,
+      } = await supabase.storage
         .from("avatars")
-        .upload(filePath, file, {
-          upsert: true,
-          contentType: file.type,
-        });
+        .upload(
+          filePath,
+          file,
+          {
+            upsert: true,
+            contentType: file.type,
+          }
+        );
 
       if (uploadError) {
-        console.error("UPLOAD ERROR:", uploadError);
-        alert("Unable to upload picture. Please try again.");
+        console.error(
+          "UPLOAD ERROR:",
+          uploadError
+        );
+
+        alert(
+          "Unable to upload picture. Please try again."
+        );
+
         return;
       }
 
-      const { data: publicUrlData } = supabase.storage
+      const {
+        data: publicUrlData,
+      } = supabase.storage
         .from("avatars")
-        .getPublicUrl(filePath);
+        .getPublicUrl(
+          filePath
+        );
 
-      const avatarUrl = publicUrlData.publicUrl;
+      const avatarUrl =
+        publicUrlData.publicUrl;
 
-      const { error: updateError } = await supabase
+      const {
+        error: updateError,
+      } = await supabase
         .from("members")
         .update({
           avatar_url: avatarUrl,
@@ -330,7 +485,10 @@ function Dashboard() {
         .eq("id", user.id);
 
       if (updateError) {
-        console.error("PROFILE UPDATE ERROR:", updateError);
+        console.error(
+          "PROFILE UPDATE ERROR:",
+          updateError
+        );
 
         alert(
           "Picture uploaded, but profile could not be updated."
@@ -339,15 +497,26 @@ function Dashboard() {
         return;
       }
 
-      setMember((current) => ({
-        ...(current || {}),
-        avatar_url: avatarUrl,
-      }));
+      setMember(
+        (current) => ({
+          ...(current || {}),
+          avatar_url:
+            avatarUrl,
+        })
+      );
 
-      alert("Profile picture updated successfully.");
+      alert(
+        "Profile picture updated successfully."
+      );
     } catch (error) {
-      console.error("PROFILE PHOTO ERROR:", error);
-      alert("Something went wrong while uploading your picture.");
+      console.error(
+        "PROFILE PHOTO ERROR:",
+        error
+      );
+
+      alert(
+        "Something went wrong while uploading your picture."
+      );
     } finally {
       setUploadingPhoto(false);
       event.target.value = "";
@@ -361,17 +530,31 @@ function Dashboard() {
    */
   const handleLogout = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
+      const {
+        error,
+      } = await supabase.auth.signOut();
 
       if (error) {
-        console.error("LOGOUT ERROR:", error);
-        alert("Unable to log out. Please try again.");
+        console.error(
+          "LOGOUT ERROR:",
+          error
+        );
+
+        alert(
+          "Unable to log out. Please try again."
+        );
+
         return;
       }
 
-      navigate("/", { replace: true });
+      navigate("/", {
+        replace: true,
+      });
     } catch (error) {
-      console.error("LOGOUT ERROR:", error);
+      console.error(
+        "LOGOUT ERROR:",
+        error
+      );
     }
   };
 
@@ -388,7 +571,9 @@ function Dashboard() {
             : "#f4f8f3",
         }}
       >
-        <div style={styles.splashContent}>
+        <div
+          style={styles.splashContent}
+        >
           <img
             src={APP_LOGO}
             alt="CHSDOSA Cooperative Society"
@@ -398,7 +583,9 @@ function Dashboard() {
           <p
             style={{
               ...styles.splashText,
-              color: darkMode ? "#f4c84d" : "#176b3a",
+              color: darkMode
+                ? "#f4c84d"
+                : "#176b3a",
             }}
           >
             CHSDOSA COOPERATIVE SOCIETY
@@ -411,14 +598,18 @@ function Dashboard() {
   /*
    * GREETING
    */
-  const hour = new Date().getHours();
+  const hour =
+    new Date().getHours();
 
-  let greeting = "Good evening";
+  let greeting =
+    "Good evening";
 
   if (hour < 12) {
-    greeting = "Good morning";
+    greeting =
+      "Good morning";
   } else if (hour < 17) {
-    greeting = "Good afternoon";
+    greeting =
+      "Good afternoon";
   }
 
   /*
@@ -427,28 +618,41 @@ function Dashboard() {
   const slides = [
     {
       title: "CHSDOSA",
-      subtitle: "COOPERATIVE SOCIETY",
-      text: "Leadership with Integrity, Unity and Progress",
+      subtitle:
+        "COOPERATIVE SOCIETY",
+      text:
+        "Leadership with Integrity, Unity and Progress",
     },
     {
-      title: "SAVE • CONTRIBUTE • GROW",
-      subtitle: "YOUR COOPERATIVE JOURNEY",
-      text: "Together we build a stronger community.",
+      title:
+        "SAVE • CONTRIBUTE • GROW",
+      subtitle:
+        "YOUR COOPERATIVE JOURNEY",
+      text:
+        "Together we build a stronger community.",
     },
     {
-      title: "WELCOME MEMBERS",
-      subtitle: "YOUR ACCOUNT • YOUR FUTURE",
-      text: "Manage your cooperative activities with ease.",
+      title:
+        "WELCOME MEMBERS",
+      subtitle:
+        "YOUR ACCOUNT • YOUR FUTURE",
+      text:
+        "Manage your cooperative activities with ease.",
     },
     {
-      title: "LOAN OPPORTUNITY",
-      subtitle: "UP TO 1.5× ELIGIBLE SAVINGS",
-      text: "Eligible members can apply for a loan according to cooperative rules and approval.",
+      title:
+        "LOAN OPPORTUNITY",
+      subtitle:
+        "UP TO 1.5× ELIGIBLE SAVINGS",
+      text:
+        "Eligible members can apply for a loan according to cooperative rules and approval.",
     },
     {
       title: "CHSDOSA",
-      subtitle: "UNITY • PROGRESS • DEVELOPMENT",
-      text: "Working together for a better tomorrow.",
+      subtitle:
+        "UNITY • PROGRESS • DEVELOPMENT",
+      text:
+        "Working together for a better tomorrow.",
     },
   ];
 
@@ -459,41 +663,66 @@ function Dashboard() {
         background: darkMode
           ? "linear-gradient(180deg, #06120d 0%, #0c1d15 100%)"
           : "linear-gradient(180deg, #f4f8f3 0%, #eef4ed 100%)",
-        color: darkMode ? "#ffffff" : "#173522",
-        overscrollBehaviorY: "contain",
+        color: darkMode
+          ? "#ffffff"
+          : "#173522",
       }}
     >
-      <div style={styles.backgroundPattern} />
+      <div
+        style={
+          styles.backgroundPattern
+        }
+      />
 
       <div style={styles.container}>
         {/* TOP HEADER */}
-        <div style={styles.header}>
-          <div style={styles.profileArea}>
+        <div
+          style={styles.header}
+        >
+          <div
+            style={
+              styles.profileArea
+            }
+          >
             <label
               style={{
                 ...styles.profilePicture,
-                background: darkMode ? "#d6ad3a" : "#176b3a",
+                background: darkMode
+                  ? "#d6ad3a"
+                  : "#176b3a",
               }}
               title="Upload profile picture"
             >
               {member?.avatar_url ? (
                 <img
-                  src={member.avatar_url}
+                  src={
+                    member.avatar_url
+                  }
                   alt="Member profile"
-                  style={styles.profileImage}
+                  style={
+                    styles.profileImage
+                  }
                 />
               ) : (
                 member?.full_name
-                  ? member.full_name.charAt(0).toUpperCase()
+                  ? member.full_name
+                      .charAt(0)
+                      .toUpperCase()
                   : "M"
               )}
 
               <input
                 type="file"
                 accept="image/*"
-                onChange={handleProfileUpload}
-                style={styles.hiddenFileInput}
-                disabled={uploadingPhoto}
+                onChange={
+                  handleProfileUpload
+                }
+                style={
+                  styles.hiddenFileInput
+                }
+                disabled={
+                  uploadingPhoto
+                }
               />
             </label>
 
@@ -501,7 +730,9 @@ function Dashboard() {
               <p
                 style={{
                   ...styles.smallGreeting,
-                  color: darkMode ? "#b7c8bd" : "#617466",
+                  color: darkMode
+                    ? "#b7c8bd"
+                    : "#617466",
                 }}
               >
                 {greeting}
@@ -510,28 +741,48 @@ function Dashboard() {
               <h2
                 style={{
                   ...styles.memberName,
-                  color: darkMode ? "#ffffff" : "#123b25",
+                  color: darkMode
+                    ? "#ffffff"
+                    : "#123b25",
                 }}
               >
-                {member?.full_name || "Member"}
+                {member?.full_name ||
+                  "Member"}
               </h2>
             </div>
           </div>
 
-          <div style={styles.headerActions}>
+          <div
+            style={
+              styles.headerActions
+            }
+          >
             <button
               style={{
                 ...styles.circleButton,
-                background: darkMode ? "#14291f" : "#ffffff",
-                color: darkMode ? "#f4c84d" : "#176b3a",
+                background: darkMode
+                  ? "#14291f"
+                  : "#ffffff",
+                color: darkMode
+                  ? "#f4c84d"
+                  : "#176b3a",
               }}
-              onClick={() => navigate("/notifications")}
+              onClick={() =>
+                navigate(
+                  "/notifications"
+                )
+              }
               aria-label="Notifications"
             >
               🔔
 
-              {notifications > 0 && (
-                <span style={styles.notificationBadge}>
+              {notifications >
+                0 && (
+                <span
+                  style={
+                    styles.notificationBadge
+                  }
+                >
                   {notifications}
                 </span>
               )}
@@ -540,30 +791,48 @@ function Dashboard() {
             <button
               style={{
                 ...styles.circleButton,
-                background: darkMode ? "#14291f" : "#ffffff",
-                color: darkMode ? "#f4c84d" : "#176b3a",
+                background: darkMode
+                  ? "#14291f"
+                  : "#ffffff",
+                color: darkMode
+                  ? "#f4c84d"
+                  : "#176b3a",
               }}
-              onClick={() => setDarkMode((current) => !current)}
+              onClick={() =>
+                setDarkMode(
+                  (current) =>
+                    !current
+                )
+              }
               aria-label="Change theme"
             >
-              {darkMode ? "☀️" : "🌙"}
+              {darkMode
+                ? "☀️"
+                : "🌙"}
             </button>
           </div>
         </div>
 
         {/* CHSDOSA BRANDING */}
-        <div style={styles.brandRow}>
+        <div
+          style={styles.brandRow}
+        >
           <img
             src={APP_LOGO}
             alt="CHSDOSA Cooperative Society"
-            style={styles.brandLogo}
+            style={
+              styles.brandLogo
+            }
           />
 
           <div>
             <strong
               style={{
-                color: darkMode ? "#f4c84d" : "#176b3a",
-                letterSpacing: "1px",
+                color: darkMode
+                  ? "#f4c84d"
+                  : "#176b3a",
+                letterSpacing:
+                  "1px",
               }}
             >
               CHSDOSA
@@ -572,7 +841,9 @@ function Dashboard() {
             <p
               style={{
                 ...styles.brandText,
-                color: darkMode ? "#aebdb4" : "#66766b",
+                color: darkMode
+                  ? "#aebdb4"
+                  : "#66766b",
               }}
             >
               Cooperative Society
@@ -581,26 +852,56 @@ function Dashboard() {
         </div>
 
         {/* BALANCE */}
-        <div style={styles.balanceCard}>
-          <div style={styles.balanceTop}>
+        <div
+          style={
+            styles.balanceCard
+          }
+        >
+          <div
+            style={
+              styles.balanceTop
+            }
+          >
             <div>
-              <p style={styles.balanceLabel}>
+              <p
+                style={
+                  styles.balanceLabel
+                }
+              >
                 AVAILABLE BALANCE
               </p>
 
-              <div style={styles.balanceRow}>
-                <h1 style={styles.balance}>
+              <div
+                style={
+                  styles.balanceRow
+                }
+              >
+                <h1
+                  style={
+                    styles.balance
+                  }
+                >
                   {showBalance
-                    ? `₦${Number(balance).toLocaleString("en-NG", {
-                        minimumFractionDigits: 2,
-                      })}`
+                    ? `₦${Number(
+                        balance
+                      ).toLocaleString(
+                        "en-NG",
+                        {
+                          minimumFractionDigits: 2,
+                        }
+                      )}`
                     : "₦••••••••"}
                 </h1>
 
                 <button
-                  style={styles.balanceEye}
+                  style={
+                    styles.balanceEye
+                  }
                   onClick={() =>
-                    setShowBalance((current) => !current)
+                    setShowBalance(
+                      (current) =>
+                        !current
+                    )
                   }
                   aria-label={
                     showBalance
@@ -608,29 +909,57 @@ function Dashboard() {
                       : "Show balance"
                   }
                 >
-                  {showBalance ? "👁️" : "🙈"}
+                  {showBalance
+                    ? "👁️"
+                    : "🙈"}
                 </button>
               </div>
 
-              <p style={styles.accountText}>
+              <p
+                style={
+                  styles.accountText
+                }
+              >
                 CHSDOSA Cooperative Account
               </p>
             </div>
 
-            <div style={styles.balanceIcon}>₦</div>
+            <div
+              style={
+                styles.balanceIcon
+              }
+            >
+              ₦
+            </div>
           </div>
 
-          <div style={styles.balanceButtons}>
+          <div
+            style={
+              styles.balanceButtons
+            }
+          >
             <button
-              style={styles.depositButton}
-              onClick={() => navigate("/deposit")}
+              style={
+                styles.depositButton
+              }
+              onClick={() =>
+                navigate(
+                  "/deposit"
+                )
+              }
             >
               + Deposit
             </button>
 
             <button
-              style={styles.viewButton}
-              onClick={() => navigate("/transactions")}
+              style={
+                styles.viewButton
+              }
+              onClick={() =>
+                navigate(
+                  "/transactions"
+                )
+              }
             >
               View Transactions
             </button>
@@ -641,14 +970,20 @@ function Dashboard() {
         <div
           style={{
             ...styles.welcome,
-            background: darkMode ? "#10251a" : "#ffffff",
-            borderColor: darkMode ? "#234432" : "#e0e9e1",
+            background: darkMode
+              ? "#10251a"
+              : "#ffffff",
+            borderColor: darkMode
+              ? "#234432"
+              : "#e0e9e1",
           }}
         >
           <h2
             style={{
               ...styles.welcomeTitle,
-              color: darkMode ? "#ffffff" : "#123b25",
+              color: darkMode
+                ? "#ffffff"
+                : "#123b25",
             }}
           >
             Welcome to CHSDOSA 👋
@@ -657,22 +992,33 @@ function Dashboard() {
           <p
             style={{
               ...styles.welcomeText,
-              color: darkMode ? "#b7c8bd" : "#647269",
+              color: darkMode
+                ? "#b7c8bd"
+                : "#647269",
             }}
           >
-            Manage your cooperative account, contributions and
-            activities from one place.
+            Manage your cooperative
+            account, contributions
+            and activities from one
+            place.
           </p>
 
           {member?.member_number && (
             <div
               style={{
                 ...styles.memberNumberBox,
-                background: darkMode ? "#0a1911" : "#f2f8f3",
+                background: darkMode
+                  ? "#0a1911"
+                  : "#f2f8f3",
               }}
             >
-              <span>Member No.</span>
-              <strong>{member.member_number}</strong>
+              <span>
+                Member No.
+              </span>
+
+              <strong>
+                {member.member_number}
+              </strong>
             </div>
           )}
         </div>
@@ -690,26 +1036,48 @@ function Dashboard() {
           <img
             src={APP_LOGO}
             alt=""
-            style={styles.slideBackgroundLogo}
+            style={
+              styles.slideBackgroundLogo
+            }
           />
 
-          <div style={styles.slideContent}>
-            <p style={styles.slideSmall}>
+          <div
+            style={
+              styles.slideContent
+            }
+          >
+            <p
+              style={
+                styles.slideSmall
+              }
+            >
               {slides[slide].subtitle}
             </p>
 
-            <h2 style={styles.slideTitle}>
+            <h2
+              style={
+                styles.slideTitle
+              }
+            >
               {slides[slide].title}
             </h2>
 
-            <p style={styles.slideText}>
+            <p
+              style={
+                styles.slideText
+              }
+            >
               {slides[slide].text}
             </p>
 
             {slide === 3 && (
               <button
-                style={styles.slideLoanButton}
-                onClick={() => navigate("/loan")}
+                style={
+                  styles.slideLoanButton
+                }
+                onClick={() =>
+                  navigate("/loan")
+                }
               >
                 View Loan
               </button>
@@ -718,11 +1086,17 @@ function Dashboard() {
         </div>
 
         {/* QUICK ACTIONS */}
-        <div style={styles.sectionHeader}>
+        <div
+          style={
+            styles.sectionHeader
+          }
+        >
           <h3
             style={{
               ...styles.sectionTitle,
-              color: darkMode ? "#ffffff" : "#173522",
+              color: darkMode
+                ? "#ffffff"
+                : "#173522",
             }}
           >
             Quick Actions
@@ -733,73 +1107,155 @@ function Dashboard() {
           <button
             style={{
               ...styles.menu,
-              background: darkMode ? "#10251a" : "#ffffff",
-              color: darkMode ? "#ffffff" : "#173522",
+              background: darkMode
+                ? "#10251a"
+                : "#ffffff",
+              color: darkMode
+                ? "#ffffff"
+                : "#173522",
             }}
-            onClick={() => navigate("/deposit")}
+            onClick={() =>
+              navigate("/deposit")
+            }
           >
-            <span style={styles.icon}>💰</span>
-            <span>Deposit</span>
+            <span
+              style={styles.icon}
+            >
+              💰
+            </span>
+
+            <span>
+              Deposit
+            </span>
           </button>
 
           <button
             style={{
               ...styles.menu,
-              background: darkMode ? "#10251a" : "#ffffff",
-              color: darkMode ? "#ffffff" : "#173522",
+              background: darkMode
+                ? "#10251a"
+                : "#ffffff",
+              color: darkMode
+                ? "#ffffff"
+                : "#173522",
             }}
-            onClick={() => navigate("/transactions")}
+            onClick={() =>
+              navigate(
+                "/transactions"
+              )
+            }
           >
-            <span style={styles.icon}>📊</span>
-            <span>Transactions</span>
+            <span
+              style={styles.icon}
+            >
+              📊
+            </span>
+
+            <span>
+              Transactions
+            </span>
           </button>
 
           <button
             style={{
               ...styles.menu,
-              background: darkMode ? "#10251a" : "#ffffff",
-              color: darkMode ? "#ffffff" : "#173522",
+              background: darkMode
+                ? "#10251a"
+                : "#ffffff",
+              color: darkMode
+                ? "#ffffff"
+                : "#173522",
             }}
-            onClick={() => navigate("/contributions")}
+            onClick={() =>
+              navigate(
+                "/contributions"
+              )
+            }
           >
-            <span style={styles.icon}>🤝</span>
-            <span>Contributions</span>
+            <span
+              style={styles.icon}
+            >
+              🤝
+            </span>
+
+            <span>
+              Contributions
+            </span>
           </button>
 
           <button
             style={{
               ...styles.menu,
-              background: darkMode ? "#10251a" : "#ffffff",
-              color: darkMode ? "#ffffff" : "#173522",
+              background: darkMode
+                ? "#10251a"
+                : "#ffffff",
+              color: darkMode
+                ? "#ffffff"
+                : "#173522",
             }}
-            onClick={() => navigate("/profile")}
+            onClick={() =>
+              navigate("/profile")
+            }
           >
-            <span style={styles.icon}>👤</span>
-            <span>My Profile</span>
+            <span
+              style={styles.icon}
+            >
+              👤
+            </span>
+
+            <span>
+              My Profile
+            </span>
           </button>
 
           <button
             style={{
               ...styles.menu,
-              background: darkMode ? "#10251a" : "#ffffff",
-              color: darkMode ? "#ffffff" : "#173522",
+              background: darkMode
+                ? "#10251a"
+                : "#ffffff",
+              color: darkMode
+                ? "#ffffff"
+                : "#173522",
             }}
-            onClick={() => navigate("/meeting")}
+            onClick={() =>
+              navigate("/meeting")
+            }
           >
-            <span style={styles.icon}>📅</span>
-            <span>Meetings</span>
+            <span
+              style={styles.icon}
+            >
+              📅
+            </span>
+
+            <span>
+              Meetings
+            </span>
           </button>
 
           <button
             style={{
               ...styles.menu,
-              background: darkMode ? "#10251a" : "#ffffff",
-              color: darkMode ? "#ffffff" : "#173522",
+              background: darkMode
+                ? "#10251a"
+                : "#ffffff",
+              color: darkMode
+                ? "#ffffff"
+                : "#173522",
             }}
-            onClick={() => navigate("/loan")}
+            onClick={() =>
+              navigate("/loan")
+            }
           >
-            <span style={styles.icon}>📋</span>
-            <span>Loan</span>
+            <span
+              style={styles.icon}
+            >
+              📋
+            </span>
+
+            <span>
+              Loan
+            </span>
           </button>
         </div>
 
@@ -807,12 +1263,18 @@ function Dashboard() {
         <div
           style={{
             ...styles.bottomNav,
-            background: darkMode ? "#0d2016" : "#ffffff",
-            borderColor: darkMode ? "#234432" : "#e1e8e2",
+            background: darkMode
+              ? "#0d2016"
+              : "#ffffff",
+            borderColor: darkMode
+              ? "#234432"
+              : "#e1e8e2",
           }}
         >
           <button
-            style={styles.navButtonActive}
+            style={
+              styles.navButtonActive
+            }
             onClick={() =>
               window.scrollTo({
                 top: 0,
@@ -821,55 +1283,83 @@ function Dashboard() {
             }
           >
             <span>⌂</span>
-            <small>Home</small>
+            <small>
+              Home
+            </small>
           </button>
 
           <button
             style={{
               ...styles.navButton,
-              color: darkMode ? "#b7c8bd" : "#6b786f",
+              color: darkMode
+                ? "#b7c8bd"
+                : "#6b786f",
             }}
-            onClick={() => navigate("/transactions")}
+            onClick={() =>
+              navigate(
+                "/transactions"
+              )
+            }
           >
             <span>↕</span>
-            <small>Transactions</small>
+            <small>
+              Transactions
+            </small>
           </button>
 
           <button
             style={{
               ...styles.navButton,
-              color: darkMode ? "#b7c8bd" : "#6b786f",
+              color: darkMode
+                ? "#b7c8bd"
+                : "#6b786f",
             }}
-            onClick={() => navigate("/meeting")}
+            onClick={() =>
+              navigate("/meeting")
+            }
           >
             <span>📅</span>
-            <small>Meetings</small>
+            <small>
+              Meetings
+            </small>
           </button>
 
           <button
             style={{
               ...styles.navButton,
-              color: darkMode ? "#b7c8bd" : "#6b786f",
+              color: darkMode
+                ? "#b7c8bd"
+                : "#6b786f",
             }}
-            onClick={() => navigate("/profile")}
+            onClick={() =>
+              navigate("/profile")
+            }
           >
             <span>👤</span>
-            <small>Profile</small>
+            <small>
+              Profile
+            </small>
           </button>
         </div>
 
         {/* LOGOUT */}
-        <button style={styles.logout} onClick={handleLogout}>
+        <button
+          style={styles.logout}
+          onClick={handleLogout}
+        >
           Logout
         </button>
 
         <p
           style={{
             ...styles.footer,
-            color: darkMode ? "#718278" : "#8a958d",
+            color: darkMode
+              ? "#718278"
+              : "#8a958d",
           }}
         >
-          CHSDOSA Cooperative Society • Leadership with Integrity,
+          CHSDOSA Cooperative Society
+          • Leadership with Integrity,
           Unity and Progress
         </p>
       </div>
@@ -879,12 +1369,15 @@ function Dashboard() {
 
 const styles = {
   page: {
+    width: "100%",
     minHeight: "100vh",
     padding: "15px 12px 100px",
     boxSizing: "border-box",
     position: "relative",
     overflowX: "hidden",
-    transition: "background 0.3s ease, color 0.3s ease",
+    touchAction: "pan-y",
+    transition:
+      "background 0.3s ease, color 0.3s ease",
   },
 
   backgroundPattern: {
@@ -903,9 +1396,10 @@ const styles = {
   container: {
     width: "100%",
     maxWidth: "600px",
-    margin: "auto",
+    margin: "0 auto",
     position: "relative",
     zIndex: 1,
+    boxSizing: "border-box",
   },
 
   header: {
@@ -930,7 +1424,8 @@ const styles = {
     fontSize: "18px",
     fontWeight: "800",
     cursor: "pointer",
-    boxShadow: "0 5px 15px rgba(0,0,0,0.12)",
+    boxShadow:
+      "0 5px 15px rgba(0,0,0,0.12)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -972,11 +1467,13 @@ const styles = {
     width: "39px",
     height: "39px",
     borderRadius: "50%",
-    border: "1px solid rgba(0,0,0,0.06)",
+    border:
+      "1px solid rgba(0,0,0,0.06)",
     cursor: "pointer",
     fontSize: "17px",
     position: "relative",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+    boxShadow:
+      "0 4px 12px rgba(0,0,0,0.08)",
   },
 
   notificationBadge: {
@@ -1008,7 +1505,8 @@ const styles = {
     objectFit: "contain",
     background: "#ffffff",
     padding: "2px",
-    boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
+    boxShadow:
+      "0 3px 10px rgba(0,0,0,0.08)",
   },
 
   brandText: {
@@ -1023,7 +1521,8 @@ const styles = {
     padding: "18px",
     borderRadius: "19px",
     marginBottom: "14px",
-    boxShadow: "0 13px 28px rgba(10,70,40,0.23)",
+    boxShadow:
+      "0 13px 28px rgba(10,70,40,0.23)",
   },
 
   balanceTop: {
@@ -1053,7 +1552,8 @@ const styles = {
 
   balanceEye: {
     border: "none",
-    background: "rgba(255,255,255,0.12)",
+    background:
+      "rgba(255,255,255,0.12)",
     borderRadius: "9px",
     padding: "6px 8px",
     cursor: "pointer",
@@ -1070,8 +1570,10 @@ const styles = {
     width: "46px",
     height: "46px",
     borderRadius: "14px",
-    border: "1px solid rgba(255,255,255,0.25)",
-    background: "rgba(255,255,255,0.10)",
+    border:
+      "1px solid rgba(255,255,255,0.25)",
+    background:
+      "rgba(255,255,255,0.10)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1101,9 +1603,11 @@ const styles = {
   viewButton: {
     flex: 1,
     padding: "10px",
-    border: "1px solid rgba(255,255,255,0.35)",
+    border:
+      "1px solid rgba(255,255,255,0.35)",
     borderRadius: "10px",
-    background: "rgba(255,255,255,0.10)",
+    background:
+      "rgba(255,255,255,0.10)",
     color: "white",
     fontWeight: "700",
     cursor: "pointer",
@@ -1115,7 +1619,8 @@ const styles = {
     borderRadius: "16px",
     marginBottom: "13px",
     border: "1px solid",
-    boxShadow: "0 5px 18px rgba(0,0,0,0.04)",
+    boxShadow:
+      "0 5px 18px rgba(0,0,0,0.04)",
   },
 
   welcomeTitle: {
@@ -1147,20 +1652,24 @@ const styles = {
     position: "relative",
     overflow: "hidden",
     marginBottom: "15px",
-    boxShadow: "0 10px 24px rgba(10,60,35,0.17)",
-    transition: "background 0.6s ease",
+    boxShadow:
+      "0 10px 24px rgba(10,60,35,0.17)",
+    transition:
+      "background 0.6s ease",
   },
 
   slideBackgroundLogo: {
     position: "absolute",
     right: "-18px",
     top: "50%",
-    transform: "translateY(-50%)",
+    transform:
+      "translateY(-50%)",
     width: "125px",
     height: "125px",
     objectFit: "contain",
     opacity: 0.09,
-    filter: "grayscale(100%) brightness(2)",
+    filter:
+      "grayscale(100%) brightness(2)",
     pointerEvents: "none",
   },
 
@@ -1189,7 +1698,8 @@ const styles = {
     margin: 0,
     fontSize: "10px",
     lineHeight: 1.4,
-    color: "rgba(255,255,255,0.88)",
+    color:
+      "rgba(255,255,255,0.88)",
   },
 
   slideLoanButton: {
@@ -1215,13 +1725,15 @@ const styles = {
 
   grid: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+    gridTemplateColumns:
+      "1fr 1fr",
     gap: "10px",
   },
 
   menu: {
     padding: "16px 9px",
-    border: "1px solid rgba(100,120,105,0.12)",
+    border:
+      "1px solid rgba(100,120,105,0.12)",
     borderRadius: "15px",
     fontSize: "12px",
     cursor: "pointer",
@@ -1229,8 +1741,10 @@ const styles = {
     flexDirection: "column",
     alignItems: "center",
     gap: "6px",
-    boxShadow: "0 5px 15px rgba(0,0,0,0.04)",
-    transition: "transform 0.2s ease",
+    boxShadow:
+      "0 5px 15px rgba(0,0,0,0.04)",
+    transition:
+      "transform 0.2s ease",
   },
 
   icon: {
@@ -1241,15 +1755,19 @@ const styles = {
     position: "fixed",
     bottom: "10px",
     left: "50%",
-    transform: "translateX(-50%)",
-    width: "calc(100% - 24px)",
+    transform:
+      "translateX(-50%)",
+    width:
+      "calc(100% - 24px)",
     maxWidth: "576px",
     padding: "8px 5px",
     borderRadius: "17px",
     border: "1px solid",
     display: "grid",
-    gridTemplateColumns: "repeat(4, 1fr)",
-    boxShadow: "0 8px 30px rgba(0,0,0,0.13)",
+    gridTemplateColumns:
+      "repeat(4, 1fr)",
+    boxShadow:
+      "0 8px 30px rgba(0,0,0,0.13)",
     zIndex: 20,
   },
 
@@ -1281,7 +1799,8 @@ const styles = {
     width: "100%",
     marginTop: "16px",
     padding: "11px",
-    border: "1px solid #e3d8d8",
+    border:
+      "1px solid #e3d8d8",
     borderRadius: "11px",
     background: "transparent",
     color: "#a13a3a",
@@ -1310,7 +1829,8 @@ const styles = {
 
   splashContent: {
     textAlign: "center",
-    animation: "chsdosaSplashFade 0.65s ease-out",
+    animation:
+      "chsdosaSplashFade 0.65s ease-out",
   },
 
   splashLogo: {
@@ -1321,7 +1841,8 @@ const styles = {
     background: "#ffffff",
     padding: "5px",
     objectFit: "contain",
-    boxShadow: "0 8px 25px rgba(0,0,0,0.12)",
+    boxShadow:
+      "0 8px 25px rgba(0,0,0,0.12)",
   },
 
   splashText: {
@@ -1334,16 +1855,21 @@ const styles = {
 
 /*
  * Splash animation.
- * It does not affect meeting audio because this is only
- * the Dashboard/app-return screen.
+ *
+ * It does not affect meeting audio because this
+ * is only the Dashboard/app-return screen.
  */
 if (
   typeof document !== "undefined" &&
-  !document.getElementById("chsdosa-dashboard-animation")
+  !document.getElementById(
+    "chsdosa-dashboard-animation"
+  )
 ) {
-  const style = document.createElement("style");
+  const style =
+    document.createElement("style");
 
-  style.id = "chsdosa-dashboard-animation";
+  style.id =
+    "chsdosa-dashboard-animation";
 
   style.textContent = `
     @keyframes chsdosaSplashFade {
@@ -1351,6 +1877,7 @@ if (
         opacity: 0;
         transform: scale(0.96);
       }
+
       to {
         opacity: 1;
         transform: scale(1);
