@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -9,7 +9,9 @@ function Dashboard() {
 
   const [member, setMember] = useState(null);
   const [balance, setBalance] = useState(0);
-  const [loading, setLoading] = useState(true);
+
+  // App startup / return splash
+  const [booting, setBooting] = useState(true);
 
   // Remember dark mode after refresh/reopening
   const [darkMode, setDarkMode] = useState(() => {
@@ -21,6 +23,11 @@ function Dashboard() {
   const [showBalance, setShowBalance] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
+  // Pull-to-refresh state
+  const pullStartY = useRef(null);
+  const pulling = useRef(false);
+  const refreshing = useRef(false);
+
   /*
    * SAVE DARK MODE
    */
@@ -31,17 +38,14 @@ function Dashboard() {
   /*
    * LOAD MEMBER DATA
    *
-   * We first use getSession() instead of immediately using getUser().
-   * This gives Supabase time to restore the saved login session
-   * when the app is refreshed or reopened.
+   * Existing Supabase session is restored automatically.
+   * The member is NOT logged out when the app is closed/reopened.
    */
   useEffect(() => {
     let mounted = true;
 
     const startDashboard = async () => {
       try {
-        setLoading(true);
-
         const {
           data: { session },
           error,
@@ -53,7 +57,7 @@ function Dashboard() {
 
         if (!session?.user) {
           if (mounted) {
-            setLoading(false);
+            setBooting(false);
             navigate("/login", { replace: true });
           }
           return;
@@ -62,13 +66,21 @@ function Dashboard() {
         await loadMemberData(session.user);
 
         if (mounted) {
-          setLoading(false);
+          /*
+           * Small professional logo appearance when reopening
+           * the app with an existing login session.
+           */
+          setTimeout(() => {
+            if (mounted) {
+              setBooting(false);
+            }
+          }, 650);
         }
       } catch (error) {
         console.error("DASHBOARD ERROR:", error);
 
         if (mounted) {
-          setLoading(false);
+          setBooting(false);
         }
       }
     };
@@ -89,12 +101,13 @@ function Dashboard() {
         await loadMemberData(session.user);
 
         if (mounted) {
-          setLoading(false);
+          setBooting(false);
         }
       } else if (event === "SIGNED_OUT") {
         setMember(null);
         setBalance(0);
-        setLoading(false);
+        setBooting(false);
+
         navigate("/login", { replace: true });
       }
     });
@@ -107,13 +120,83 @@ function Dashboard() {
 
   /*
    * MOVING CHSDOSA SLIDESHOW
+   *
+   * No dots or manual indicators.
    */
   useEffect(() => {
     const timer = setInterval(() => {
-      setSlide((current) => (current + 1) % 4);
+      setSlide((current) => (current + 1) % 5);
     }, 4000);
 
     return () => clearInterval(timer);
+  }, []);
+
+  /*
+   * PULL DOWN TO REFRESH
+   *
+   * Only refreshes when the Dashboard is already at the top.
+   * The Dashboard itself is not moved or shifted.
+   */
+  useEffect(() => {
+    const handleTouchStart = (event) => {
+      if (window.scrollY !== 0) return;
+
+      pullStartY.current = event.touches?.[0]?.clientY ?? null;
+      pulling.current = false;
+    };
+
+    const handleTouchMove = (event) => {
+      if (pullStartY.current === null) return;
+      if (window.scrollY !== 0) return;
+
+      const currentY = event.touches?.[0]?.clientY ?? 0;
+      const distance = currentY - pullStartY.current;
+
+      if (distance > 15) {
+        pulling.current = true;
+
+        // Prevent the Dashboard itself from being dragged downward.
+        event.preventDefault();
+      }
+    };
+
+    const handleTouchEnd = async () => {
+      if (!pulling.current) {
+        pullStartY.current = null;
+        return;
+      }
+
+      pullStartY.current = null;
+      pulling.current = false;
+
+      if (refreshing.current) return;
+
+      refreshing.current = true;
+
+      try {
+        await loadMemberData();
+      } finally {
+        refreshing.current = false;
+      }
+    };
+
+    document.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
+
+    document.addEventListener("touchmove", handleTouchMove, {
+      passive: false,
+    });
+
+    document.addEventListener("touchend", handleTouchEnd, {
+      passive: true,
+    });
+
+    return () => {
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
+    };
   }, []);
 
   /*
@@ -214,14 +297,12 @@ function Dashboard() {
         return;
       }
 
-      const fileExt = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const fileExt =
+        file.name.split(".").pop()?.toLowerCase() || "jpg";
 
       const fileName = `${user.id}.${fileExt}`;
       const filePath = `members/${fileName}`;
 
-      /*
-       * Upload image
-       */
       const { error: uploadError } = await supabase.storage
         .from("avatars")
         .upload(filePath, file, {
@@ -235,18 +316,12 @@ function Dashboard() {
         return;
       }
 
-      /*
-       * Get public image URL
-       */
       const { data: publicUrlData } = supabase.storage
         .from("avatars")
         .getPublicUrl(filePath);
 
       const avatarUrl = publicUrlData.publicUrl;
 
-      /*
-       * Update member profile
-       */
       const { error: updateError } = await supabase
         .from("members")
         .update({
@@ -264,9 +339,6 @@ function Dashboard() {
         return;
       }
 
-      /*
-       * Update screen immediately
-       */
       setMember((current) => ({
         ...(current || {}),
         avatar_url: avatarUrl,
@@ -284,16 +356,15 @@ function Dashboard() {
 
   /*
    * LOGOUT
+   *
+   * This is the member-controlled logout.
    */
   const handleLogout = async () => {
     try {
-      setLoading(true);
-
       const { error } = await supabase.auth.signOut();
 
       if (error) {
         console.error("LOGOUT ERROR:", error);
-        setLoading(false);
         alert("Unable to log out. Please try again.");
         return;
       }
@@ -301,32 +372,37 @@ function Dashboard() {
       navigate("/", { replace: true });
     } catch (error) {
       console.error("LOGOUT ERROR:", error);
-      setLoading(false);
     }
   };
 
   /*
-   * LOADING SCREEN
+   * APP RETURN / STARTUP LOGO
    */
-  if (loading) {
+  if (booting) {
     return (
       <div
         style={{
-          ...styles.loading,
-          background: darkMode ? "#07150f" : "#f4f8f3",
-          color: darkMode ? "#ffffff" : "#123b25",
+          ...styles.returnSplash,
+          background: darkMode
+            ? "#07150f"
+            : "#f4f8f3",
         }}
       >
-        <div style={styles.loadingBox}>
+        <div style={styles.splashContent}>
           <img
             src={APP_LOGO}
             alt="CHSDOSA Cooperative Society"
-            style={styles.loadingLogo}
+            style={styles.splashLogo}
           />
 
-          <h2>Loading your account...</h2>
-
-          <p>CHSDOSA Cooperative Society</p>
+          <p
+            style={{
+              ...styles.splashText,
+              color: darkMode ? "#f4c84d" : "#176b3a",
+            }}
+          >
+            CHSDOSA COOPERATIVE SOCIETY
+          </p>
         </div>
       </div>
     );
@@ -365,6 +441,11 @@ function Dashboard() {
       text: "Manage your cooperative activities with ease.",
     },
     {
+      title: "LOAN OPPORTUNITY",
+      subtitle: "UP TO 1.5× ELIGIBLE SAVINGS",
+      text: "Eligible members can apply for a loan according to cooperative rules and approval.",
+    },
+    {
       title: "CHSDOSA",
       subtitle: "UNITY • PROGRESS • DEVELOPMENT",
       text: "Working together for a better tomorrow.",
@@ -379,12 +460,12 @@ function Dashboard() {
           ? "linear-gradient(180deg, #06120d 0%, #0c1d15 100%)"
           : "linear-gradient(180deg, #f4f8f3 0%, #eef4ed 100%)",
         color: darkMode ? "#ffffff" : "#173522",
+        overscrollBehaviorY: "contain",
       }}
     >
       <div style={styles.backgroundPattern} />
 
       <div style={styles.container}>
-
         {/* TOP HEADER */}
         <div style={styles.header}>
           <div style={styles.profileArea}>
@@ -444,7 +525,7 @@ function Dashboard() {
                 background: darkMode ? "#14291f" : "#ffffff",
                 color: darkMode ? "#f4c84d" : "#176b3a",
               }}
-              onClick={() => setNotifications(0)}
+              onClick={() => navigate("/notifications")}
               aria-label="Notifications"
             >
               🔔
@@ -624,21 +705,15 @@ function Dashboard() {
             <p style={styles.slideText}>
               {slides[slide].text}
             </p>
-          </div>
 
-          <div style={styles.slideDots}>
-            {slides.map((_, index) => (
+            {slide === 3 && (
               <button
-                key={index}
-                onClick={() => setSlide(index)}
-                style={{
-                  ...styles.dot,
-                  width: index === slide ? "20px" : "6px",
-                  opacity: index === slide ? 1 : 0.45,
-                }}
-                aria-label={`Slide ${index + 1}`}
-              />
-            ))}
+                style={styles.slideLoanButton}
+                onClick={() => navigate("/loan")}
+              >
+                View Loan
+              </button>
+            )}
           </div>
         </div>
 
@@ -685,6 +760,7 @@ function Dashboard() {
               background: darkMode ? "#10251a" : "#ffffff",
               color: darkMode ? "#ffffff" : "#173522",
             }}
+            onClick={() => navigate("/contributions")}
           >
             <span style={styles.icon}>🤝</span>
             <span>Contributions</span>
@@ -708,6 +784,7 @@ function Dashboard() {
               background: darkMode ? "#10251a" : "#ffffff",
               color: darkMode ? "#ffffff" : "#173522",
             }}
+            onClick={() => navigate("/meeting")}
           >
             <span style={styles.icon}>📅</span>
             <span>Meetings</span>
@@ -719,6 +796,7 @@ function Dashboard() {
               background: darkMode ? "#10251a" : "#ffffff",
               color: darkMode ? "#ffffff" : "#173522",
             }}
+            onClick={() => navigate("/loan")}
           >
             <span style={styles.icon}>📋</span>
             <span>Loan</span>
@@ -762,6 +840,7 @@ function Dashboard() {
               ...styles.navButton,
               color: darkMode ? "#b7c8bd" : "#6b786f",
             }}
+            onClick={() => navigate("/meeting")}
           >
             <span>📅</span>
             <small>Meetings</small>
@@ -1113,24 +1192,16 @@ const styles = {
     color: "rgba(255,255,255,0.88)",
   },
 
-  slideDots: {
-    position: "absolute",
-    bottom: "8px",
-    left: "15px",
-    display: "flex",
-    gap: "4px",
-    alignItems: "center",
-    zIndex: 3,
-  },
-
-  dot: {
-    height: "5px",
-    padding: 0,
+  slideLoanButton: {
+    marginTop: "8px",
+    padding: "6px 11px",
     border: "none",
-    borderRadius: "10px",
+    borderRadius: "8px",
     background: "#f4c84d",
+    color: "#173522",
+    fontSize: "10px",
+    fontWeight: "800",
     cursor: "pointer",
-    transition: "all 0.3s ease",
   },
 
   sectionHeader: {
@@ -1225,7 +1296,10 @@ const styles = {
     margin: "12px 18px 0",
   },
 
-  loading: {
+  /*
+   * PROFESSIONAL APP RETURN SPLASH
+   */
+  returnSplash: {
     minHeight: "100vh",
     display: "flex",
     justifyContent: "center",
@@ -1234,20 +1308,65 @@ const styles = {
     boxSizing: "border-box",
   },
 
-  loadingBox: {
+  splashContent: {
     textAlign: "center",
+    animation: "chsdosaSplashFade 0.65s ease-out",
   },
 
-  loadingLogo: {
-    width: "65px",
-    height: "65px",
-    margin: "0 auto 15px",
-    borderRadius: "20px",
+  splashLogo: {
+    width: "78px",
+    height: "78px",
+    margin: "0 auto 14px",
+    borderRadius: "22px",
     background: "#ffffff",
-    padding: "4px",
+    padding: "5px",
     objectFit: "contain",
-    boxShadow: "0 5px 15px rgba(0,0,0,0.12)",
+    boxShadow: "0 8px 25px rgba(0,0,0,0.12)",
+  },
+
+  splashText: {
+    margin: 0,
+    fontSize: "11px",
+    fontWeight: "800",
+    letterSpacing: "1.2px",
   },
 };
+
+/*
+ * Splash animation.
+ * It does not affect meeting audio because this is only
+ * the Dashboard/app-return screen.
+ */
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("chsdosa-dashboard-animation")
+) {
+  const style = document.createElement("style");
+
+  style.id = "chsdosa-dashboard-animation";
+
+  style.textContent = `
+    @keyframes chsdosaSplashFade {
+      from {
+        opacity: 0;
+        transform: scale(0.96);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  `;
+
+  document.head.appendChild(style);
+}
 
 export default Dashboard;

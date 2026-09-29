@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Deposit from "./pages/Deposit";
 import Transactions from "./pages/Transactions";
+import Meeting from "./pages/Meeting";
 
 function Welcome() {
   const navigate = useNavigate();
@@ -535,6 +536,12 @@ function App() {
         <Route
           path="/transactions"
           element={<Transactions />}
+        />
+
+        {/* CHSDOSA MEETING */}
+        <Route
+          path="/meeting"
+          element={<Meeting />}
         />
 
       </Routes>

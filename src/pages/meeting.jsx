@@ -1,0 +1,3098 @@
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useNavigate } from "react-router-dom";
+import { Room, RoomEvent, Track } from "livekit-client";
+import { supabase } from "../lib/supabase";
+
+const LOGO = "/chsdosa-cooperative/chsdosa-icon.png";
+
+const ROOM_NAME = "CHSDOSA General Meeting";
+
+const ADMIN_DEFAULTS = [
+  {
+    id: "admin1",
+    name: "President",
+    role: "PRESIDENT",
+  },
+  {
+    id: "admin2",
+    name: "Secretary",
+    role: "SECRETARY",
+  },
+  {
+    id: "admin3",
+    name: "Treasurer",
+    role: "TREASURER",
+  },
+  {
+    id: "admin4",
+    name: "Room Monitor",
+    role: "ROOM MONITOR",
+  },
+];
+
+const LIVE_THEMES = [
+  "linear-gradient(135deg, #071a2b, #0f766e, #102c45)",
+  "linear-gradient(135deg, #111827, #1d4ed8, #312e81)",
+  "linear-gradient(135deg, #20112d, #7c3aed, #312e81)",
+  "linear-gradient(135deg, #35140b, #c2410c, #713f12)",
+  "linear-gradient(135deg, #071a2b, #0369a1, #164e63)",
+];
+
+function makeAvatar(name) {
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    name || "CHSDOSA"
+  )}&background=0f766e&color=fff&bold=true`;
+}
+
+export default function Meeting() {
+  const navigate = useNavigate();
+
+  /* =========================
+     LIVEKIT
+  ========================= */
+
+  const liveKitRoomRef = useRef(null);
+  const audioContainerRef = useRef(null);
+
+  /* =========================
+     MEMBER
+  ========================= */
+
+  const [member, setMember] = useState(null);
+  const [loadingMember, setLoadingMember] = useState(true);
+
+  /* =========================
+     ADMIN ACCESS
+  ========================= */
+
+  const [adminUser, setAdminUser] = useState(null);
+
+  /* =========================
+     MEETING STATE
+  ========================= */
+
+  const [joined, setJoined] = useState(false);
+  const [muted, setMuted] = useState(true);
+  const [selectedSeat, setSelectedSeat] = useState(null);
+
+  const [seatCapacity, setSeatCapacity] = useState(20);
+
+  const [showActive, setShowActive] = useState(false);
+
+  const [message, setMessage] = useState("");
+  const [connectionStatus, setConnectionStatus] =
+    useState("");
+
+  const [entrance, setEntrance] = useState(null);
+
+  const [lockedMic, setLockedMic] = useState(false);
+
+  /* =========================
+     SPEAKING PEOPLE
+  ========================= */
+
+  const [speakingIds, setSpeakingIds] =
+    useState([]);
+
+  /* =========================
+     COMMENTS
+  ========================= */
+
+  const [comments, setComments] = useState([
+    {
+      id: "welcome-message",
+      type: "message",
+      name: "Secretary",
+      avatar: makeAvatar("Secretary"),
+      text: "Good evening everyone.",
+    },
+  ]);
+
+  /* =========================
+     ACTIVE PEOPLE
+  ========================= */
+
+  const [activeMembers, setActiveMembers] =
+    useState([]);
+
+  /* =========================
+     SMOOTH BACKGROUND
+  ========================= */
+
+  const [themeIndex, setThemeIndex] = useState(0);
+  const [nextThemeIndex, setNextThemeIndex] =
+    useState(1);
+  const [themeFading, setThemeFading] =
+    useState(false);
+
+  /* =========================
+     CURRENT USER
+  ========================= */
+
+  const currentUser = useMemo(() => {
+    const name =
+      member?.full_name ||
+      member?.name ||
+      member?.fullName ||
+      "Member";
+
+    const avatar =
+      member?.avatar_url ||
+      member?.avatar ||
+      makeAvatar(name);
+
+    return {
+      id: member?.id || "current-user",
+      name,
+      avatar,
+      memberNumber:
+        member?.member_number ||
+        member?.member_id ||
+        "",
+    };
+  }, [member]);
+
+  /* =========================
+     LOAD MEMBER
+  ========================= */
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadMember() {
+      setLoadingMember(true);
+
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          if (mounted) {
+            setLoadingMember(false);
+          }
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("members")
+          .select("*")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error(
+            "Member loading error:",
+            error
+          );
+        }
+
+        if (mounted) {
+          setMember(data || null);
+        }
+
+        const {
+          data: adminData,
+          error: adminError,
+        } = await supabase
+          .from("admin_users")
+          .select("*")
+          .eq("id", user.id)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (adminError) {
+          console.log(
+            "Admin access check:",
+            adminError.message
+          );
+        }
+
+        if (mounted) {
+          setAdminUser(adminData || null);
+        }
+      } catch (error) {
+        console.error(
+          "Meeting member error:",
+          error
+        );
+      } finally {
+        if (mounted) {
+          setLoadingMember(false);
+        }
+      }
+    }
+
+    loadMember();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const isMeetingAdmin = Boolean(adminUser);
+
+  /* =========================
+     ADMIN DATA
+  ========================= */
+
+  const admins = ADMIN_DEFAULTS.map((admin) => ({
+    ...admin,
+    avatar: makeAvatar(admin.name),
+  }));
+
+  /* =========================
+     MEMBER SEATS
+  ========================= */
+
+  const memberSeats = Array.from(
+    { length: seatCapacity },
+    (_, index) => ({
+      id: `seat-${index + 1}`,
+      number: index + 1,
+    })
+  );
+
+  /* =========================
+     BACKGROUND CROSSFADE
+  ========================= */
+
+  useEffect(() => {
+    let fadeTimer;
+    let nextTimer;
+
+    const startFade = () => {
+      setNextThemeIndex(
+        (themeIndex + 1) % LIVE_THEMES.length
+      );
+
+      setThemeFading(true);
+
+      fadeTimer = setTimeout(() => {
+        setThemeIndex(
+          (oldIndex) =>
+            (oldIndex + 1) % LIVE_THEMES.length
+        );
+
+        setThemeFading(false);
+
+        nextTimer = setTimeout(
+          startFade,
+          7000
+        );
+      }, 2500);
+    };
+
+    nextTimer = setTimeout(
+      startFade,
+      7000
+    );
+
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(nextTimer);
+    };
+  }, [themeIndex]);
+
+  /* =========================
+     REMOVE AUDIO ELEMENTS
+  ========================= */
+
+  const removeAudioTrack = (track) => {
+    try {
+      const elements = track.detach();
+
+      elements.forEach((element) => {
+        element.remove();
+      });
+    } catch (error) {
+      console.log(
+        "Audio detach error:",
+        error
+      );
+    }
+  };
+
+  /* =========================
+     ADD REMOTE AUDIO
+  ========================= */
+
+  const attachAudioTrack = (track) => {
+    if (
+      !audioContainerRef.current ||
+      track.kind !== Track.Kind.Audio
+    ) {
+      return;
+    }
+
+    try {
+      const element = track.attach();
+
+      element.autoplay = true;
+      element.setAttribute(
+        "aria-hidden",
+        "true"
+      );
+
+      audioContainerRef.current.appendChild(
+        element
+      );
+    } catch (error) {
+      console.error(
+        "Unable to attach remote audio:",
+        error
+      );
+    }
+  };
+
+  /* =========================
+     LIVEKIT PARTICIPANT HELPERS
+  ========================= */
+
+  const participantToMember = (
+    participant
+  ) => {
+    const name =
+      participant.name ||
+      participant.identity ||
+      "Member";
+
+    return {
+      id: participant.identity,
+      name,
+      avatar: makeAvatar(name),
+    };
+  };
+
+  /* =========================
+     SEND LIVE CHAT DATA
+  ========================= */
+
+  const publishChatMessage = async (
+    text
+  ) => {
+    const room = liveKitRoomRef.current;
+
+    if (!room) return;
+
+    try {
+      const payload = new TextEncoder().encode(
+        JSON.stringify({
+          type: "chat",
+          text,
+          name: currentUser.name,
+          avatar: currentUser.avatar,
+        })
+      );
+
+      await room.localParticipant.publishData(
+        payload,
+        {
+          reliable: true,
+          topic: "chsdosa-chat",
+        }
+      );
+    } catch (error) {
+      console.error(
+        "Chat publish error:",
+        error
+      );
+    }
+  };
+
+  /* =========================
+     JOIN LIVEKIT MEETING
+  ========================= */
+
+  const joinMeeting = async () => {
+    if (joined) return;
+
+    if (!member?.id) {
+      alert(
+        "Your member account could not be found."
+      );
+      return;
+    }
+
+    let room = null;
+
+    try {
+      setConnectionStatus(
+        "Connecting to meeting..."
+      );
+
+      const { data, error } =
+        await supabase.functions.invoke(
+          "livekit-token",
+          {
+            body: {
+              room_name: ROOM_NAME,
+              participant_identity:
+                member.id,
+              participant_name:
+                currentUser.name,
+            },
+          }
+        );
+
+      if (error) {
+        console.error(
+          "LiveKit token error:",
+          error
+        );
+
+        throw new Error(
+          error.message ||
+            "Unable to connect to meeting."
+        );
+      }
+
+      if (
+        !data?.server_url ||
+        !data?.participant_token
+      ) {
+        throw new Error(
+          data?.error ||
+            "LiveKit token response is incomplete."
+        );
+      }
+
+      room = new Room();
+
+      liveKitRoomRef.current = room;
+
+      /* =========================
+         REMOTE AUDIO
+      ========================= */
+
+      room.on(
+        RoomEvent.TrackSubscribed,
+        (
+          track,
+          publication,
+          participant
+        ) => {
+          if (
+            track.kind ===
+            Track.Kind.Audio
+          ) {
+            attachAudioTrack(track);
+          }
+
+          const person =
+            participantToMember(
+              participant
+            );
+
+          setActiveMembers((old) => {
+            const exists = old.some(
+              (item) =>
+                item.id === person.id
+            );
+
+            if (exists) return old;
+
+            return [...old, person];
+          });
+        }
+      );
+
+      room.on(
+        RoomEvent.TrackUnsubscribed,
+        (track) => {
+          removeAudioTrack(track);
+        }
+      );
+
+      /* =========================
+         PARTICIPANT JOINED
+      ========================= */
+
+      room.on(
+        RoomEvent.ParticipantConnected,
+        (participant) => {
+          const person =
+            participantToMember(
+              participant
+            );
+
+          setActiveMembers((old) => {
+            const exists = old.some(
+              (item) =>
+                item.id === person.id
+            );
+
+            if (exists) return old;
+
+            return [...old, person];
+          });
+
+          setComments((old) => [
+            ...old,
+            {
+              id: `join-${participant.identity}-${Date.now()}`,
+              type: "join",
+              name: person.name,
+              avatar: person.avatar,
+              text: "joined the meeting",
+            },
+          ]);
+
+          setEntrance({
+            name: person.name,
+            avatar: person.avatar,
+            type: "member",
+          });
+
+          window.setTimeout(() => {
+            setEntrance(null);
+          }, 3500);
+        }
+      );
+
+      /* =========================
+         PARTICIPANT LEFT
+      ========================= */
+
+      room.on(
+        RoomEvent.ParticipantDisconnected,
+        (participant) => {
+          setActiveMembers((old) =>
+            old.filter(
+              (person) =>
+                person.id !==
+                participant.identity
+            )
+          );
+
+          setSpeakingIds((old) =>
+            old.filter(
+              (id) =>
+                id !==
+                participant.identity
+            )
+          );
+
+          /*
+            No "left the meeting"
+            comment is created.
+          */
+        }
+      );
+
+      /* =========================
+         ACTIVE SPEAKERS
+      ========================= */
+
+      room.on(
+        RoomEvent.ActiveSpeakersChanged,
+        (speakers) => {
+          setSpeakingIds(
+            speakers.map(
+              (participant) =>
+                participant.identity
+            )
+          );
+        }
+      );
+
+      /* =========================
+         LIVE CHAT
+      ========================= */
+
+      room.on(
+        RoomEvent.DataReceived,
+        (
+          payload,
+          participant,
+          kind,
+          topic
+        ) => {
+          if (
+            topic &&
+            topic !== "chsdosa-chat"
+          ) {
+            return;
+          }
+
+          try {
+            const decoded =
+              new TextDecoder().decode(
+                payload
+              );
+
+            const data =
+              JSON.parse(decoded);
+
+            if (
+              data?.type !== "chat" ||
+              !data.text
+            ) {
+              return;
+            }
+
+            setComments((old) => [
+              ...old,
+              {
+                id: `remote-message-${Date.now()}-${Math.random()}`,
+                type: "message",
+                name:
+                  data.name ||
+                  participant?.name ||
+                  participant?.identity ||
+                  "Member",
+                avatar:
+                  data.avatar ||
+                  makeAvatar(
+                    data.name ||
+                      participant?.name ||
+                      "Member"
+                  ),
+                text: data.text,
+              },
+            ]);
+          } catch (error) {
+            console.error(
+              "Chat data error:",
+              error
+            );
+          }
+        }
+      );
+
+      /* =========================
+         DISCONNECTED
+      ========================= */
+
+      room.on(
+        RoomEvent.Disconnected,
+        () => {
+          setJoined(false);
+          setMuted(true);
+          setSelectedSeat(null);
+          setSpeakingIds([]);
+          setConnectionStatus(
+            ""
+          );
+
+          liveKitRoomRef.current =
+            null;
+        }
+      );
+
+      /* =========================
+         CONNECT
+      ========================= */
+
+      await room.connect(
+        data.server_url,
+        data.participant_token,
+        {
+          autoSubscribe: true,
+        }
+      );
+
+      /*
+        Make sure the microphone starts OFF.
+        The member must deliberately press
+        the microphone button to speak.
+      */
+
+      await room.localParticipant
+        .setMicrophoneEnabled(false);
+
+      /*
+        Start remote audio after the
+        user's JOIN button interaction.
+      */
+
+      try {
+        await room.startAudio();
+      } catch (audioError) {
+        console.log(
+          "Audio start notice:",
+          audioError
+        );
+      }
+
+      /* =========================
+         ADD CURRENT USER
+      ========================= */
+
+      setJoined(true);
+      setMuted(true);
+      setConnectionStatus("");
+
+      setActiveMembers((old) => {
+        const exists = old.some(
+          (person) =>
+            person.id === currentUser.id
+        );
+
+        if (exists) return old;
+
+        return [
+          ...old,
+          currentUser,
+        ];
+      });
+
+      setComments((old) => [
+        ...old,
+        {
+          id: `join-${currentUser.id}-${Date.now()}`,
+          type: "join",
+          name: currentUser.name,
+          avatar: currentUser.avatar,
+          text: "joined the meeting",
+        },
+      ]);
+
+      setEntrance({
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+        type: isMeetingAdmin
+          ? "admin"
+          : "member",
+      });
+
+      window.setTimeout(() => {
+        setEntrance(null);
+      }, 3500);
+
+      /*
+        Add participants that were already
+        inside the room before this member joined.
+      */
+
+      room.remoteParticipants.forEach(
+        (participant) => {
+          const person =
+            participantToMember(
+              participant
+            );
+
+          setActiveMembers((old) => {
+            const exists = old.some(
+              (item) =>
+                item.id === person.id
+            );
+
+            if (exists) return old;
+
+            return [
+              ...old,
+              person,
+            ];
+          });
+        }
+      );
+    } catch (error) {
+      console.error(
+        "Meeting connection error:",
+        error
+      );
+
+      if (room) {
+        try {
+          await room.disconnect();
+        } catch (disconnectError) {
+          console.error(
+            "Disconnect error:",
+            disconnectError
+          );
+        }
+      }
+
+      liveKitRoomRef.current = null;
+
+      setJoined(false);
+      setMuted(true);
+      setSelectedSeat(null);
+      setConnectionStatus("");
+
+      alert(
+        error?.message ||
+          "Unable to join the meeting. Please try again."
+      );
+    }
+  };
+
+  /* =========================
+     LEAVE LIVEKIT MEETING
+  ========================= */
+
+  const leaveMeeting = async () => {
+    const room =
+      liveKitRoomRef.current;
+
+    try {
+      if (room) {
+        await room.disconnect();
+      }
+    } catch (error) {
+      console.error(
+        "Meeting leave error:",
+        error
+      );
+    }
+
+    liveKitRoomRef.current = null;
+
+    setJoined(false);
+    setMuted(true);
+    setLockedMic(false);
+    setSelectedSeat(null);
+    setSpeakingIds([]);
+    setConnectionStatus("");
+
+    setActiveMembers((old) =>
+      old.filter(
+        (person) =>
+          person.id !== currentUser.id
+      )
+    );
+
+    /*
+      No "left the meeting" comment.
+    */
+  };
+
+  /* =========================
+     CLEANUP
+  ========================= */
+
+  useEffect(() => {
+    return () => {
+      const room =
+        liveKitRoomRef.current;
+
+      if (room) {
+        room.disconnect();
+        liveKitRoomRef.current = null;
+      }
+    };
+  }, []);
+
+  /* =========================
+     COMMENT
+  ========================= */
+
+  const sendMessage = async () => {
+    const text = message.trim();
+
+    if (!text || !joined) return;
+
+    setComments((old) => [
+      ...old,
+      {
+        id: `message-${Date.now()}`,
+        type: "message",
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+        text,
+      },
+    ]);
+
+    setMessage("");
+
+    await publishChatMessage(text);
+  };
+
+  /* =========================
+     SEAT
+  ========================= */
+
+  const chooseSeat = (seatId) => {
+    if (!joined) {
+      alert(
+        "Please join the meeting first."
+      );
+      return;
+    }
+
+    if (selectedSeat === seatId) {
+      setSelectedSeat(null);
+      setMuted(true);
+
+      const room =
+        liveKitRoomRef.current;
+
+      if (room) {
+        room.localParticipant
+          .setMicrophoneEnabled(false)
+          .catch((error) =>
+            console.error(
+              "Mic disable error:",
+              error
+            )
+          );
+      }
+
+      return;
+    }
+
+    setSelectedSeat(seatId);
+    setMuted(true);
+
+    const room =
+      liveKitRoomRef.current;
+
+    if (room) {
+      room.localParticipant
+        .setMicrophoneEnabled(false)
+        .catch((error) =>
+          console.error(
+            "Mic disable error:",
+            error
+          )
+        );
+    }
+  };
+
+  /* =========================
+     MICROPHONE
+  ========================= */
+
+  const toggleMute = async () => {
+    if (!selectedSeat) {
+      alert(
+        "Please choose a seat before speaking."
+      );
+      return;
+    }
+
+    if (lockedMic) {
+      alert(
+        "Your microphone has been locked by the meeting admin."
+      );
+      return;
+    }
+
+    const room =
+      liveKitRoomRef.current;
+
+    if (!room) {
+      alert(
+        "You are not connected to the meeting."
+      );
+      return;
+    }
+
+    const shouldEnable = muted;
+
+    try {
+      await room.localParticipant
+        .setMicrophoneEnabled(
+          shouldEnable
+        );
+
+      setMuted(!shouldEnable);
+    } catch (error) {
+      console.error(
+        "Microphone error:",
+        error
+      );
+
+      alert(
+        "Microphone could not be changed. Please check your microphone permission."
+      );
+    }
+  };
+
+  /* =========================
+     ADMIN: LOCK MIC
+  ========================= */
+
+  const lockCurrentMemberMic = async () => {
+    if (!isMeetingAdmin) return;
+
+    setLockedMic(true);
+    setMuted(true);
+
+    const room =
+      liveKitRoomRef.current;
+
+    if (room) {
+      try {
+        await room.localParticipant
+          .setMicrophoneEnabled(false);
+      } catch (error) {
+        console.error(
+          "Mic lock error:",
+          error
+        );
+      }
+    }
+  };
+
+  /* =========================
+     ADMIN: UNLOCK MIC
+  ========================= */
+
+  const unlockCurrentMemberMic = () => {
+    if (!isMeetingAdmin) return;
+
+    setLockedMic(false);
+  };
+
+  /* =========================
+     ADMIN: REMOVE FROM SEAT
+  ========================= */
+
+  const removeCurrentMemberFromSeat =
+    async () => {
+      if (!isMeetingAdmin) return;
+
+      setSelectedSeat(null);
+      setMuted(true);
+
+      const room =
+        liveKitRoomRef.current;
+
+      if (room) {
+        try {
+          await room.localParticipant
+            .setMicrophoneEnabled(false);
+        } catch (error) {
+          console.error(
+            "Remove from seat mic error:",
+            error
+          );
+        }
+      }
+    };
+
+  /* =========================
+     ADMIN: CHANGE SEAT COUNT
+  ========================= */
+
+  const changeSeatCapacity = (
+    amount
+  ) => {
+    if (!isMeetingAdmin) return;
+
+    if (selectedSeat) {
+      const seatNumber = Number(
+        selectedSeat.replace(
+          "seat-",
+          ""
+        )
+      );
+
+      if (seatNumber > amount) {
+        const confirmChange =
+          window.confirm(
+            "A selected seat is outside the new seat limit. Continue?"
+          );
+
+        if (!confirmChange) return;
+
+        setSelectedSeat(null);
+        setMuted(true);
+
+        const room =
+          liveKitRoomRef.current;
+
+        if (room) {
+          room.localParticipant
+            .setMicrophoneEnabled(false)
+            .catch((error) =>
+              console.error(
+                "Mic disable error:",
+                error
+              )
+            );
+        }
+      }
+    }
+
+    setSeatCapacity(amount);
+  };
+
+  /* =========================
+     LOADING
+  ========================= */
+
+  if (loadingMember) {
+    return (
+      <div className="meeting-loading">
+        <img
+          src={LOGO}
+          alt="CHSDOSA"
+        />
+
+        <strong>
+          Opening meeting...
+        </strong>
+
+        <style>{`
+          .meeting-loading {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            background: #071a2b;
+            color: white;
+            font-family: Arial, sans-serif;
+          }
+
+          .meeting-loading img {
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  return (
+    <div className="meeting-page">
+
+      {/* =========================
+          LIVEKIT AUDIO CONTAINER
+      ========================= */}
+
+      <div
+        ref={audioContainerRef}
+        className="audio-container"
+        aria-hidden="true"
+      />
+
+      {/* =========================
+          BACKGROUND
+      ========================= */}
+
+      <div
+        className="live-background"
+        aria-hidden="true"
+      >
+        <div
+          className="live-bg-layer visible"
+          style={{
+            background:
+              LIVE_THEMES[themeIndex],
+          }}
+        />
+
+        <div
+          className={`live-bg-layer ${
+            themeFading
+              ? "visible"
+              : ""
+          }`}
+          style={{
+            background:
+              LIVE_THEMES[
+                nextThemeIndex
+              ],
+          }}
+        />
+      </div>
+
+      <style>{`
+
+        * {
+          box-sizing: border-box;
+        }
+
+        html,
+        body,
+        #root {
+          margin: 0;
+          min-height: 100%;
+        }
+
+        body {
+          margin: 0;
+          font-family:
+            Arial,
+            Helvetica,
+            sans-serif;
+        }
+
+        .audio-container {
+          position: fixed;
+          width: 1px;
+          height: 1px;
+          left: -10px;
+          top: -10px;
+          overflow: hidden;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .meeting-page {
+          min-height: 100vh;
+          color: white;
+          overflow-x: hidden;
+          position: relative;
+          isolation: isolate;
+        }
+
+        .live-background {
+          position: fixed;
+          inset: 0;
+          z-index: -3;
+          overflow: hidden;
+        }
+
+        .live-bg-layer {
+          position: absolute;
+          inset: 0;
+          opacity: 0;
+          transition:
+            opacity 2.5s
+            ease-in-out;
+        }
+
+        .live-bg-layer.visible {
+          opacity: 1;
+        }
+
+        .meeting-page::before {
+          content: "";
+          position: fixed;
+          inset: 0;
+          background:
+            radial-gradient(
+              circle at 50% 8%,
+              rgba(255,255,255,.12),
+              transparent 32%
+            );
+          pointer-events: none;
+          z-index: -2;
+        }
+
+        .meeting-header {
+          height: 54px;
+          position: sticky;
+          top: 0;
+          z-index: 50;
+
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+
+          padding: 7px 10px;
+
+          background:
+            rgba(0,0,0,.42);
+
+          backdrop-filter:
+            blur(16px);
+
+          border-bottom:
+            1px solid
+            rgba(255,255,255,.12);
+        }
+
+        .back-button,
+        .active-button {
+          border: 0;
+          color: white;
+          cursor: pointer;
+          background:
+            rgba(255,255,255,.12);
+        }
+
+        .back-button {
+          width: 38px;
+          height: 38px;
+          border-radius: 50%;
+          font-size: 21px;
+        }
+
+        .active-button {
+          padding: 8px 11px;
+          border-radius: 20px;
+          font-weight: 800;
+          font-size: 11px;
+        }
+
+        .meeting-title {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 1px;
+        }
+
+        .meeting-title strong {
+          font-size: 13px;
+        }
+
+        .meeting-title span {
+          font-size: 8px;
+          opacity: .85;
+        }
+
+        .live-dot {
+          display: inline-block;
+          width: 6px;
+          height: 6px;
+          margin-right: 4px;
+          background: #ef4444;
+          border-radius: 50%;
+          box-shadow:
+            0 0 10px
+            rgba(239,68,68,.9);
+        }
+
+        .meeting-content {
+          width: min(100%, 570px);
+          margin: auto;
+          padding:
+            9px
+            9px
+            96px;
+          position: relative;
+          z-index: 2;
+        }
+
+        .room-heading {
+          text-align: center;
+          margin-bottom: 8px;
+        }
+
+        .room-heading h2 {
+          margin: 0;
+          font-size: 15px;
+          letter-spacing: .5px;
+        }
+
+        .room-heading p {
+          margin: 3px 0 0;
+          font-size: 9px;
+          opacity: .7;
+        }
+
+        .room-card {
+          padding: 8px;
+          border-radius: 16px;
+
+          background:
+            rgba(0,0,0,.20);
+
+          border:
+            1px solid
+            rgba(255,255,255,.10);
+
+          backdrop-filter:
+            blur(13px);
+
+          box-shadow:
+            0 8px 24px
+            rgba(0,0,0,.12);
+        }
+
+        .card-heading {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+
+          margin-bottom: 6px;
+
+          font-size: 9px;
+          font-weight: 900;
+          letter-spacing: .5px;
+        }
+
+        .card-heading span:last-child {
+          opacity: .65;
+          font-size: 7px;
+        }
+
+        .admin-main {
+          display: flex;
+          justify-content: center;
+        }
+
+        .admin-seat {
+          text-align: center;
+        }
+
+        .main-admin {
+          width: 112px;
+        }
+
+        .admin-avatar-big {
+          width: 76px;
+          height: 76px;
+          margin: auto;
+          position: relative;
+        }
+
+        .admin-avatar {
+          width: 48px;
+          height: 48px;
+          margin: auto;
+          position: relative;
+        }
+
+        .admin-avatar img,
+        .admin-avatar-big img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 50%;
+          border:
+            2px solid
+            rgba(255,255,255,.85);
+        }
+
+        .admin-avatar-big img {
+          border:
+            3px solid #facc15;
+
+          box-shadow:
+            0 0 0 5px
+              rgba(250,204,21,.15),
+            0 0 22px
+              rgba(250,204,21,.25);
+        }
+
+        .crown {
+          position: absolute;
+          right: -5px;
+          bottom: -2px;
+          font-size: 20px;
+        }
+
+        .small-crown {
+          position: absolute;
+          right: -4px;
+          bottom: -3px;
+          font-size: 13px;
+        }
+
+        .admin-seat strong {
+          display: block;
+          margin-top: 3px;
+          font-size: 10px;
+        }
+
+        .admin-seat small {
+          display: block;
+          margin-top: 1px;
+          font-size: 7px;
+          opacity: .65;
+        }
+
+        .other-admins {
+          display: flex;
+          justify-content: center;
+          gap: 13px;
+          margin-top: 7px;
+        }
+
+        .members-card {
+          margin-top: 8px;
+          position: relative;
+          overflow: hidden;
+          min-height: 250px;
+        }
+
+        .members-background-logo {
+          position: absolute;
+          inset: 0;
+
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .members-background-logo img {
+          width: 245px;
+          height: 245px;
+          object-fit: contain;
+          opacity: .105;
+
+          filter:
+            drop-shadow(
+              0 5px 25px
+              rgba(0,0,0,.35)
+            );
+        }
+
+        .members-card .card-heading,
+        .members-card .member-grid {
+          position: relative;
+          z-index: 2;
+        }
+
+        .member-grid {
+          display: grid;
+          grid-template-columns:
+            repeat(4, 1fr);
+          gap: 7px 3px;
+        }
+
+        .member-seat {
+          min-width: 0;
+          padding: 3px;
+          border: 0;
+          background: transparent;
+          color: white;
+          cursor: pointer;
+        }
+
+        .member-avatar {
+          width: 41px;
+          height: 41px;
+          margin: auto;
+          position: relative;
+        }
+
+        .member-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 50%;
+          border:
+            2px solid
+            rgba(255,255,255,.75);
+        }
+
+        .empty-seat {
+          width: 100%;
+          height: 100%;
+
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          border:
+            1px dashed
+            rgba(255,255,255,.38);
+
+          border-radius: 50%;
+
+          background:
+            rgba(255,255,255,.05);
+
+          color:
+            rgba(255,255,255,.65);
+
+          font-size: 18px;
+        }
+
+        .member-name {
+          display: block;
+          margin-top: 3px;
+          font-size: 7px;
+          font-weight: 700;
+          overflow: hidden;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+
+        .member-status {
+          display: block;
+          margin-top: 2px;
+          font-size: 6.5px;
+          color: #86efac;
+          font-weight: 700;
+        }
+
+        .selected-seat
+        .member-avatar img {
+          border:
+            3px solid #22c55e;
+
+          box-shadow:
+            0 0 0 5px
+              rgba(34,197,94,.15),
+            0 0 20px
+              rgba(34,197,94,.30);
+        }
+
+        .speaking-ring {
+          position: absolute;
+          inset: -4px;
+          border-radius: 50%;
+          border:
+            2px solid #22c55e;
+          animation:
+            speakingPulse 1s infinite;
+        }
+
+        @keyframes speakingPulse {
+          0%,
+          100% {
+            transform: scale(1);
+            opacity: .9;
+          }
+
+          50% {
+            transform: scale(1.13);
+            opacity: .3;
+          }
+        }
+
+        .admin-tools {
+          margin-top: 8px;
+          padding: 10px;
+          border-radius: 15px;
+
+          background:
+            rgba(0,0,0,.30);
+
+          border:
+            1px solid
+            rgba(250,204,21,.22);
+        }
+
+        .admin-tools-title {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 8px;
+          font-size: 10px;
+          font-weight: 900;
+        }
+
+        .seat-capacity-buttons {
+          display: grid;
+          grid-template-columns:
+            repeat(4, 1fr);
+          gap: 5px;
+          margin-bottom: 8px;
+        }
+
+        .capacity-button {
+          height: 32px;
+
+          border:
+            1px solid
+            rgba(255,255,255,.14);
+
+          border-radius: 8px;
+
+          background:
+            rgba(255,255,255,.07);
+
+          color: white;
+          font-weight: 800;
+          cursor: pointer;
+        }
+
+        .capacity-button.active {
+          background: #0f766e;
+          border-color: #22c55e;
+        }
+
+        .admin-actions {
+          display: grid;
+          grid-template-columns:
+            repeat(2, 1fr);
+          gap: 6px;
+        }
+
+        .admin-action {
+          min-height: 36px;
+          border: 0;
+          border-radius: 9px;
+          color: white;
+
+          background:
+            rgba(255,255,255,.10);
+
+          font-size: 9px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+
+        .admin-action.danger {
+          background:
+            rgba(220,38,38,.72);
+        }
+
+        .admin-action.success {
+          background:
+            rgba(15,118,110,.85);
+        }
+
+        .admin-tools-note {
+          margin: 7px 0 0;
+          font-size: 7px;
+          opacity: .58;
+          line-height: 1.4;
+        }
+
+        .connection-status {
+          margin-top: 7px;
+          text-align: center;
+          font-size: 9px;
+          font-weight: 800;
+          color: #fde68a;
+        }
+
+        .comments-card {
+          margin-top: 8px;
+        }
+
+        .comments-list {
+          max-height: 145px;
+          overflow-y: auto;
+          padding-right: 2px;
+        }
+
+        .comment {
+          display: flex;
+          align-items: flex-start;
+          gap: 6px;
+
+          padding: 4px 2px;
+
+          font-size: 10px;
+          line-height: 1.25;
+          font-weight: 700;
+        }
+
+        .comment-avatar {
+          width: 24px;
+          height: 24px;
+          flex: 0 0 24px;
+        }
+
+        .comment-avatar img {
+          width: 100%;
+          height: 100%;
+          border-radius: 50%;
+          object-fit: cover;
+        }
+
+        .comment-name {
+          color: #facc15;
+          font-weight: 900;
+        }
+
+        .join-comment {
+          color: #86efac;
+          padding:
+            5px 4px;
+          border-radius: 7px;
+
+          background:
+            rgba(34,197,94,.07);
+
+          font-weight: 800;
+        }
+
+        .join-comment .comment-name {
+          color: #86efac;
+        }
+
+        .join-text {
+          opacity: .9;
+          font-weight: 800;
+        }
+
+        .message-area {
+          display: flex;
+          gap: 6px;
+          margin-top: 6px;
+        }
+
+        .message-input {
+          flex: 1;
+          min-width: 0;
+          height: 38px;
+          padding: 0 13px;
+
+          border:
+            1px solid
+            rgba(255,255,255,.15);
+
+          border-radius: 19px;
+          outline: none;
+
+          background:
+            rgba(0,0,0,.25);
+
+          color: white;
+          font-size: 12px;
+        }
+
+        .message-input::placeholder {
+          color:
+            rgba(255,255,255,.55);
+        }
+
+        .send-button {
+          width: 38px;
+          height: 38px;
+          border: 0;
+          border-radius: 50%;
+          background: #0f766e;
+          color: white;
+          font-size: 16px;
+          cursor: pointer;
+        }
+
+        .send-button:disabled {
+          opacity: .4;
+        }
+
+        .controls {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 60;
+
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          gap: 8px;
+
+          padding:
+            8px 10px
+            calc(
+              8px +
+              env(safe-area-inset-bottom)
+            );
+
+          background:
+            rgba(0,0,0,.75);
+
+          backdrop-filter:
+            blur(18px);
+
+          border-top:
+            1px solid
+            rgba(255,255,255,.1);
+        }
+
+        .control {
+          width: 43px;
+          height: 43px;
+
+          border: 0;
+          border-radius: 50%;
+
+          color: white;
+
+          background:
+            rgba(255,255,255,.12);
+
+          font-size: 17px;
+          cursor: pointer;
+        }
+
+        .control.active {
+          background: #0f766e;
+        }
+
+        .join-button {
+          height: 46px;
+          padding: 0 31px;
+
+          border: 0;
+          border-radius: 23px;
+
+          color: white;
+          background: #0f766e;
+
+          font-weight: 900;
+          font-size: 12px;
+
+          cursor: pointer;
+
+          box-shadow:
+            0 8px 25px
+            rgba(15,118,110,.35);
+        }
+
+        .leave-button {
+          height: 43px;
+          padding: 0 16px;
+
+          border: 0;
+          border-radius: 22px;
+
+          color: white;
+          background: #dc2626;
+
+          font-weight: 900;
+          font-size: 11px;
+
+          cursor: pointer;
+        }
+
+        .active-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 100;
+
+          display: flex;
+          justify-content: flex-end;
+
+          background:
+            rgba(0,0,0,.72);
+
+          backdrop-filter:
+            blur(8px);
+        }
+
+        .active-panel {
+          width: min(88%, 380px);
+          height: 100%;
+          overflow-y: auto;
+          padding: 16px;
+
+          background: #101827;
+
+          box-shadow:
+            -10px 0 40px
+            rgba(0,0,0,.4);
+
+          animation:
+            activePanelIn .25s ease;
+        }
+
+        @keyframes activePanelIn {
+          from {
+            transform: translateX(100%);
+          }
+
+          to {
+            transform: translateX(0);
+          }
+        }
+
+        .active-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+
+          padding-bottom: 13px;
+
+          border-bottom:
+            1px solid
+            rgba(255,255,255,.1);
+        }
+
+        .active-header strong {
+          font-size: 16px;
+        }
+
+        .close-active {
+          width: 36px;
+          height: 36px;
+
+          border: 0;
+          border-radius: 50%;
+
+          color: white;
+
+          background:
+            rgba(255,255,255,.1);
+
+          cursor: pointer;
+        }
+
+        .active-person {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+
+          padding: 10px 2px;
+
+          border-bottom:
+            1px solid
+            rgba(255,255,255,.06);
+        }
+
+        .active-person img {
+          width: 42px;
+          height: 42px;
+
+          object-fit: cover;
+          border-radius: 50%;
+
+          border:
+            2px solid #22c55e;
+        }
+
+        .active-person-info {
+          flex: 1;
+        }
+
+        .active-person-info strong {
+          display: block;
+          font-size: 12px;
+        }
+
+        .active-person-info span {
+          display: block;
+          margin-top: 2px;
+          font-size: 9px;
+          color: #86efac;
+        }
+
+        .entrance-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 200;
+
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          pointer-events: none;
+
+          background:
+            radial-gradient(
+              circle,
+              rgba(15,118,110,.28),
+              rgba(0,0,0,.08) 45%,
+              transparent 75%
+            );
+
+          animation:
+            entranceFade 3.5s ease forwards;
+        }
+
+        .entrance-card {
+          text-align: center;
+
+          animation:
+            entranceZoom 3.5s ease forwards;
+        }
+
+        .entrance-icon {
+          font-size: 50px;
+          margin-bottom: -10px;
+
+          animation:
+            entranceVehicle 1s
+            ease-in-out
+            infinite
+            alternate;
+        }
+
+        .entrance-icon.admin {
+          animation:
+            entranceHorse 1s
+            ease-in-out
+            infinite
+            alternate;
+        }
+
+        .entrance-avatar {
+          width: 125px;
+          height: 125px;
+
+          object-fit: cover;
+          border-radius: 50%;
+
+          border:
+            5px solid white;
+
+          box-shadow:
+            0 0 0 8px
+              rgba(255,255,255,.12),
+
+            0 0 50px
+              rgba(34,197,94,.65);
+        }
+
+        .entrance-name {
+          margin-top: 14px;
+
+          font-size: 25px;
+          font-weight: 900;
+
+          text-shadow:
+            0 4px 18px
+            rgba(0,0,0,.55);
+        }
+
+        .entrance-message {
+          margin-top: 5px;
+
+          font-size: 12px;
+          font-weight: 800;
+
+          letter-spacing: 1px;
+
+          color: #86efac;
+        }
+
+        @keyframes entranceZoom {
+          0% {
+            opacity: 0;
+            transform: scale(.35);
+          }
+
+          18% {
+            opacity: 1;
+            transform: scale(1.08);
+          }
+
+          35% {
+            transform: scale(1);
+          }
+
+          75% {
+            opacity: 1;
+          }
+
+          100% {
+            opacity: 0;
+            transform: scale(1.18);
+          }
+        }
+
+        @keyframes entranceFade {
+          0% {
+            opacity: 0;
+          }
+
+          15% {
+            opacity: 1;
+          }
+
+          75% {
+            opacity: 1;
+          }
+
+          100% {
+            opacity: 0;
+          }
+        }
+
+        @keyframes entranceVehicle {
+          from {
+            transform:
+              translateY(0)
+              rotate(-5deg);
+          }
+
+          to {
+            transform:
+              translateY(-8px)
+              rotate(5deg);
+          }
+        }
+
+        @keyframes entranceHorse {
+          from {
+            transform:
+              translateY(2px)
+              rotate(-3deg)
+              scale(1);
+          }
+
+          to {
+            transform:
+              translateY(-8px)
+              rotate(3deg)
+              scale(1.06);
+          }
+        }
+
+        @media (max-width: 380px) {
+
+          .meeting-content {
+            padding-left: 7px;
+            padding-right: 7px;
+          }
+
+          .member-avatar {
+            width: 37px;
+            height: 37px;
+          }
+
+          .admin-avatar {
+            width: 45px;
+            height: 45px;
+          }
+
+          .admin-avatar-big {
+            width: 68px;
+            height: 68px;
+          }
+
+          .members-background-logo img {
+            width: 215px;
+            height: 215px;
+          }
+
+          .comments-list {
+            max-height: 130px;
+          }
+
+          .other-admins {
+            gap: 7px;
+          }
+
+          .comment {
+            font-size: 9px;
+          }
+
+          .comment-avatar {
+            width: 22px;
+            height: 22px;
+            flex-basis: 22px;
+          }
+
+          .control {
+            width: 40px;
+            height: 40px;
+          }
+
+          .leave-button {
+            height: 40px;
+            padding: 0 13px;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+
+          .live-bg-layer {
+            transition: none;
+          }
+
+          .speaking-ring,
+          .entrance-card,
+          .entrance-overlay,
+          .entrance-icon {
+            animation: none;
+          }
+        }
+
+      `}</style>
+
+      {/* =========================
+          HEADER
+      ========================= */}
+
+      <header className="meeting-header">
+
+        <button
+          className="back-button"
+          onClick={() =>
+            navigate("/dashboard")
+          }
+        >
+          ←
+        </button>
+
+        <div className="meeting-title">
+
+          <strong>
+            CHSDOSA LIVE
+          </strong>
+
+          <span>
+            <span className="live-dot" />
+            LIVE MEETING
+          </span>
+
+        </div>
+
+        <button
+          className="active-button"
+          onClick={() =>
+            setShowActive(true)
+          }
+        >
+          👥 {activeMembers.length + 4}
+        </button>
+
+      </header>
+
+      {/* =========================
+          MAIN
+      ========================= */}
+
+      <main className="meeting-content">
+
+        <div className="room-heading">
+
+          <h2>
+            CHSDOSA COOPERATIVE
+          </h2>
+
+          <p>
+            Leadership with Integrity,
+            Unity and Progress
+          </p>
+
+          {connectionStatus && (
+            <div className="connection-status">
+              {connectionStatus}
+            </div>
+          )}
+
+        </div>
+
+        {/* =========================
+            ADMINS
+        ========================= */}
+
+        <section className="room-card">
+
+          <div className="card-heading">
+
+            <span>
+              👑 ADMINISTRATION
+            </span>
+
+            <span>
+              4 ADMIN SEATS
+            </span>
+
+          </div>
+
+          <div className="admin-main">
+
+            <div className="admin-seat main-admin">
+
+              <div className="admin-avatar-big">
+
+                <img
+                  src={admins[0].avatar}
+                  alt={admins[0].name}
+                />
+
+                <span className="crown">
+                  👑
+                </span>
+
+              </div>
+
+              <strong>
+                {admins[0].name}
+              </strong>
+
+              <small>
+                {admins[0].role}
+              </small>
+
+            </div>
+
+          </div>
+
+          <div className="other-admins">
+
+            {admins.slice(1).map(
+              (admin) => (
+
+                <div
+                  className="admin-seat"
+                  key={admin.id}
+                >
+
+                  <div className="admin-avatar">
+
+                    <img
+                      src={admin.avatar}
+                      alt={admin.name}
+                    />
+
+                    <span className="small-crown">
+                      👑
+                    </span>
+
+                  </div>
+
+                  <strong>
+                    {admin.name}
+                  </strong>
+
+                  <small>
+                    {admin.role}
+                  </small>
+
+                </div>
+
+              )
+            )}
+
+          </div>
+
+        </section>
+
+        {/* =========================
+            MEMBER SEATS
+        ========================= */}
+
+        <section className="room-card members-card">
+
+          <div className="members-background-logo">
+
+            <img
+              src={LOGO}
+              alt=""
+              aria-hidden="true"
+            />
+
+          </div>
+
+          <div className="card-heading">
+
+            <span>
+              👥 MEMBER SEATS
+            </span>
+
+            <span>
+              {seatCapacity} SEATS
+            </span>
+
+          </div>
+
+          <div className="member-grid">
+
+            {memberSeats.map(
+              (seat) => {
+
+                const selected =
+                  selectedSeat ===
+                  seat.id;
+
+                const isSpeaking =
+                  selected &&
+                  speakingIds.includes(
+                    currentUser.id
+                  );
+
+                return (
+
+                  <button
+                    key={seat.id}
+                    className={`member-seat ${
+                      selected
+                        ? "selected-seat"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      chooseSeat(
+                        seat.id
+                      )
+                    }
+                  >
+
+                    <div className="member-avatar">
+
+                      {selected ? (
+
+                        <>
+                          <img
+                            src={
+                              currentUser.avatar
+                            }
+                            alt={
+                              currentUser.name
+                            }
+                          />
+
+                          {!muted &&
+                            !lockedMic &&
+                            isSpeaking && (
+                              <span className="speaking-ring" />
+                            )}
+                        </>
+
+                      ) : (
+
+                        <div className="empty-seat">
+                          +
+                        </div>
+
+                      )}
+
+                    </div>
+
+                    <span className="member-name">
+
+                      {selected
+                        ? currentUser.name
+                        : `Seat ${seat.number}`}
+
+                    </span>
+
+                    {selected && (
+
+                      <span className="member-status">
+
+                        {lockedMic
+                          ? "🔒 Mic locked"
+                          : muted
+                          ? "🔇 Muted"
+                          : "🎙️ Speaking"}
+
+                      </span>
+
+                    )}
+
+                  </button>
+
+                );
+              }
+            )}
+
+          </div>
+
+        </section>
+
+        {/* =========================
+            ADMIN CONTROLS
+        ========================= */}
+
+        {isMeetingAdmin && (
+
+          <section className="admin-tools">
+
+            <div className="admin-tools-title">
+
+              <span>
+                🛡️ MEETING ADMIN CONTROLS
+              </span>
+
+              <span>
+                {adminUser.role?.toUpperCase()}
+              </span>
+
+            </div>
+
+            <div
+              style={{
+                fontSize: 8,
+                opacity: .7,
+                marginBottom: 5,
+              }}
+            >
+              MEMBER SEAT CAPACITY
+            </div>
+
+            <div className="seat-capacity-buttons">
+
+              {[6, 10, 15, 20].map(
+                (amount) => (
+
+                  <button
+                    key={amount}
+                    className={`capacity-button ${
+                      seatCapacity ===
+                      amount
+                        ? "active"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      changeSeatCapacity(
+                        amount
+                      )
+                    }
+                  >
+                    {amount}
+                  </button>
+
+                )
+              )}
+
+            </div>
+
+            <div className="admin-actions">
+
+              <button
+                className="admin-action"
+                onClick={
+                  lockedMic
+                    ? unlockCurrentMemberMic
+                    : lockCurrentMemberMic
+                }
+              >
+                {lockedMic
+                  ? "🔓 Unlock Mic"
+                  : "🔇 Lock Mic"}
+              </button>
+
+              <button
+                className="admin-action danger"
+                onClick={
+                  removeCurrentMemberFromSeat
+                }
+              >
+                ⬇️ Remove From Seat
+              </button>
+
+              <button
+                className="admin-action success"
+                onClick={() => {
+
+                  if (!joined) {
+                    alert(
+                      "Member must join the meeting first."
+                    );
+                    return;
+                  }
+
+                  if (selectedSeat) {
+                    alert(
+                      "Member is already seated."
+                    );
+                    return;
+                  }
+
+                  const firstSeat =
+                    memberSeats[0];
+
+                  if (firstSeat) {
+                    setSelectedSeat(
+                      firstSeat.id
+                    );
+                  }
+
+                }}
+              >
+                🪑 Assign Seat
+              </button>
+
+              <button
+                className="admin-action"
+                onClick={() =>
+                  setShowActive(true)
+                }
+              >
+                👥 View Active Members
+              </button>
+
+            </div>
+
+            <p className="admin-tools-note">
+              Removing a member from a seat
+              does not remove the member from
+              the meeting. Members can continue
+              listening and commenting.
+            </p>
+
+          </section>
+
+        )}
+
+        {/* =========================
+            COMMENTS
+        ========================= */}
+
+        <section className="room-card comments-card">
+
+          <div className="card-heading">
+
+            <span>
+              💬 COMMENTS
+            </span>
+
+            <span>
+              LIVE CHAT
+            </span>
+
+          </div>
+
+          <div className="comments-list">
+
+            {comments.map(
+              (comment) => (
+
+                <div
+                  key={comment.id}
+                  className={
+                    comment.type === "join"
+                      ? "comment join-comment"
+                      : "comment"
+                  }
+                >
+
+                  <div className="comment-avatar">
+
+                    <img
+                      src={
+                        comment.avatar ||
+                        makeAvatar(
+                          comment.name
+                        )
+                      }
+                      alt={
+                        comment.name
+                      }
+                    />
+
+                  </div>
+
+                  <div>
+
+                    <span className="comment-name">
+                      {comment.name}
+                    </span>
+
+                    {comment.type ===
+                    "join" ? (
+
+                      <span className="join-text">
+                        {" "}
+                        joined the meeting
+                      </span>
+
+                    ) : (
+
+                      <>
+                        :{" "}
+                        {comment.text}
+                      </>
+
+                    )}
+
+                  </div>
+
+                </div>
+
+              )
+            )}
+
+          </div>
+
+          <div className="message-area">
+
+            <input
+              className="message-input"
+              value={message}
+              onChange={(event) =>
+                setMessage(
+                  event.target.value
+                )
+              }
+              onKeyDown={(event) => {
+
+                if (
+                  event.key === "Enter"
+                ) {
+                  sendMessage();
+                }
+
+              }}
+              disabled={!joined}
+              placeholder={
+                joined
+                  ? "Say something..."
+                  : "Join the meeting to comment"
+              }
+            />
+
+            <button
+              className="send-button"
+              disabled={
+                !joined ||
+                !message.trim()
+              }
+              onClick={sendMessage}
+            >
+              ➤
+            </button>
+
+          </div>
+
+        </section>
+
+      </main>
+
+      {/* =========================
+          BOTTOM CONTROLS
+      ========================= */}
+
+      <footer className="controls">
+
+        {!joined ? (
+
+          <button
+            className="join-button"
+            onClick={joinMeeting}
+            disabled={
+              Boolean(connectionStatus)
+            }
+          >
+            {connectionStatus
+              ? "CONNECTING..."
+              : "🎙️ JOIN MEETING"}
+          </button>
+
+        ) : (
+
+          <>
+
+            <button
+              className={`control ${
+                !muted &&
+                selectedSeat &&
+                !lockedMic
+                  ? "active"
+                  : ""
+              }`}
+              onClick={toggleMute}
+            >
+              {lockedMic
+                ? "🔒"
+                : muted
+                ? "🔇"
+                : "🎙️"}
+            </button>
+
+            <button
+              className={`control ${
+                selectedSeat
+                  ? "active"
+                  : ""
+              }`}
+              onClick={async () => {
+
+                if (selectedSeat) {
+                  setSelectedSeat(null);
+                  setMuted(true);
+
+                  const room =
+                    liveKitRoomRef.current;
+
+                  if (room) {
+                    try {
+                      await room.localParticipant
+                        .setMicrophoneEnabled(
+                          false
+                        );
+                    } catch (error) {
+                      console.error(
+                        "Mic disable error:",
+                        error
+                      );
+                    }
+                  }
+                } else {
+                  alert(
+                    "Tap an empty seat above to sit down."
+                  );
+                }
+
+              }}
+            >
+              🪑
+            </button>
+
+            <button
+              className="control"
+              onClick={() => {
+
+                document
+                  .querySelector(
+                    ".comments-card"
+                  )
+                  ?.scrollIntoView({
+                    behavior: "smooth",
+                  });
+
+              }}
+            >
+              💬
+            </button>
+
+            <button
+              className="control"
+              onClick={() =>
+                setShowActive(true)
+              }
+            >
+              👥
+            </button>
+
+            <button
+              className="leave-button"
+              onClick={leaveMeeting}
+            >
+              LEAVE
+            </button>
+
+          </>
+
+        )}
+
+      </footer>
+
+      {/* =========================
+          ACTIVE MEMBERS
+      ========================= */}
+
+      {showActive && (
+
+        <div
+          className="active-overlay"
+          onClick={() =>
+            setShowActive(false)
+          }
+        >
+
+          <div
+            className="active-panel"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+
+            <div className="active-header">
+
+              <strong>
+                👥 Active Members
+              </strong>
+
+              <button
+                className="close-active"
+                onClick={() =>
+                  setShowActive(false)
+                }
+              >
+                ✕
+              </button>
+
+            </div>
+
+            {admins.map(
+              (admin) => (
+
+                <div
+                  className="active-person"
+                  key={admin.id}
+                >
+
+                  <img
+                    src={admin.avatar}
+                    alt={admin.name}
+                  />
+
+                  <div className="active-person-info">
+
+                    <strong>
+                      {admin.name}
+                    </strong>
+
+                    <span>
+                      🟢 {admin.role}
+                    </span>
+
+                  </div>
+
+                </div>
+
+              )
+            )}
+
+            {activeMembers.map(
+              (person) => (
+
+                <div
+                  className="active-person"
+                  key={person.id}
+                >
+
+                  <img
+                    src={person.avatar}
+                    alt={person.name}
+                  />
+
+                  <div className="active-person-info">
+
+                    <strong>
+                      {person.name}
+                    </strong>
+
+                    <span>
+                      {speakingIds.includes(
+                        person.id
+                      )
+                        ? "🎙️ Speaking"
+                        : "🟢 Active now"}
+                    </span>
+
+                  </div>
+
+                </div>
+
+              )
+            )}
+
+            {activeMembers.length === 0 && (
+
+              <p
+                style={{
+                  textAlign: "center",
+                  opacity: .55,
+                  fontSize: 12,
+                  marginTop: 25,
+                }}
+              >
+                No members have joined yet.
+              </p>
+
+            )}
+
+          </div>
+
+        </div>
+
+      )}
+
+      {/* =========================
+          FULL SCREEN ENTRANCE
+      ========================= */}
+
+      {entrance && (
+
+        <div className="entrance-overlay">
+
+          <div className="entrance-card">
+
+            <div
+              className={`entrance-icon ${
+                entrance.type === "admin"
+                  ? "admin"
+                  : ""
+              }`}
+            >
+              {entrance.type ===
+              "admin"
+                ? "🐎🪖"
+                : "🚗✨"}
+            </div>
+
+            <img
+              className="entrance-avatar"
+              src={entrance.avatar}
+              alt={entrance.name}
+            />
+
+            <div className="entrance-name">
+              {entrance.name}
+            </div>
+
+            <div className="entrance-message">
+              🟢 JOINED THE MEETING
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+    </div>
+  );
+}
