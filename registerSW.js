@@ -1,0 +1,1 @@
+if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/chsdosa-cooperative/sw.js', { scope: '/chsdosa-cooperative/' })})}
